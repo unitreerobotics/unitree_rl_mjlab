@@ -293,8 +293,10 @@ class PPO:
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
 
-            # Surrogate loss
-            ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
+            # Surrogate loss (clamp log-ratio to prevent exp overflow → Inf → NaN)
+            log_ratio = actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch)
+            log_ratio = torch.clamp(log_ratio, -20.0, 20.0)
+            ratio = torch.exp(log_ratio)
             surrogate = -torch.squeeze(advantages_batch) * ratio
             surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
                 ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
@@ -371,17 +373,23 @@ class PPO:
                 self.rnd_optimizer.zero_grad()  # type: ignore
                 rnd_loss.backward()
 
-            # Collect gradients from all GPUs
-            if self.is_multi_gpu:
-                self.reduce_parameters()
+            # Skip optimizer step if loss is NaN (prevents corrupting all parameters)
+            if not torch.isfinite(loss):
+                self.optimizer.zero_grad()
+                if self.rnd_optimizer:
+                    self.rnd_optimizer.zero_grad()
+            else:
+                # Collect gradients from all GPUs
+                if self.is_multi_gpu:
+                    self.reduce_parameters()
 
-            # Apply the gradients
-            # -- For PPO
-            nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-            self.optimizer.step()
-            # -- For RND
-            if self.rnd_optimizer:
-                self.rnd_optimizer.step()
+                # Apply the gradients
+                # -- For PPO
+                nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.optimizer.step()
+                # -- For RND
+                if self.rnd_optimizer:
+                    self.rnd_optimizer.step()
 
             # Store the losses
             mean_value_loss += value_loss.item()
@@ -448,6 +456,9 @@ class PPO:
         if self.rnd:
             grads += [param.grad.view(-1) for param in self.rnd.parameters() if param.grad is not None]
         all_grads = torch.cat(grads)
+
+        # Replace NaN/Inf gradients with 0 before reduction (prevents one GPU poisoning all others)
+        all_grads = torch.nan_to_num(all_grads, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Average the gradients across all GPUs
         torch.distributed.all_reduce(all_grads, op=torch.distributed.ReduceOp.SUM)
