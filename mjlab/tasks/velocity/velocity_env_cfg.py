@@ -247,7 +247,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       func=mdp.feet_clearance,
       weight=-1.0,
       params={
-        "target_height": 0.12,
+        "target_height": 0.10,
         "command_name": "twist",
         "command_threshold": 0.1,
         "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
@@ -270,15 +270,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
         "command_threshold": 0.1,
-      },
-    ),
-    "stand_still": RewardTermCfg(
-      func=mdp.stand_still,
-      weight=-1.0,
-      params={
-        "command_name": "twist",
-        "command_threshold": 0.1,
-        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
       },
     ),
   }

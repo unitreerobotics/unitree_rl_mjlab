@@ -37,14 +37,32 @@ def get_spec() -> mujoco.MjSpec:
 # Actuator config.
 ##
 
-GO2_ACTUATOR_GO2HV = BuiltinPositionActuatorCfg(
+GO2_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
   target_names_expr=(
-    ".*",
+    ".*hip_.*",
   ),
   stiffness=20.0,
   damping=1.0,
   effort_limit=23.5,
   armature=0.01,
+)
+GO2_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
+  target_names_expr=(
+    ".*thigh_.*",
+  ),
+  stiffness=20.0,
+  damping=1.0,
+  effort_limit=23.5,
+  armature=0.01,
+)
+GO2_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
+  target_names_expr=(
+    ".*calf_.*",
+  ),
+  stiffness=40.0,
+  damping=2.0,
+  effort_limit=45,
+  armature=0.02,
 )
 
 ##
@@ -99,7 +117,9 @@ FULL_COLLISION = CollisionCfg(
 
 GO2_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(
-    GO2_ACTUATOR_GO2HV,
+    GO2_ACTUATOR_HIP,
+    GO2_ACTUATOR_THIGH,
+    GO2_ACTUATOR_CALF,
   ),
   soft_joint_pos_limit_factor=0.9,
 )

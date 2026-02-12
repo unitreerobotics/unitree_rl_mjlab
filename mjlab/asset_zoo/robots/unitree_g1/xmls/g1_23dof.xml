@@ -4,15 +4,15 @@
   <default>
     <default class="g1_23dof">
       <default class="visual">
-        <geom group="2" type="mesh" density="0" material="silver" contype="0" conaffinity="0"/>
+        <geom type="mesh" density="0" material="silver" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom group="3" type="capsule" contype="1" conaffinity="1"/>
+        <geom type="capsule" priority="1" condim="6" group="3"/>
         <default class="foot_capsule">
-          <geom type="capsule" size="0.01"/>
+          <geom size="0.01"/>
         </default>
       </default>
-      <site group="5" rgba="1 0 0 1"/>
+      <site rgba="1 0 0 1" group="5"/>
     </default>
   </default>
 

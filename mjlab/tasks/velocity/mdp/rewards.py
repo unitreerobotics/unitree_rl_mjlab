@@ -36,7 +36,7 @@ def track_linear_velocity(
   actual = asset.data.root_link_lin_vel_b
   xy_error = torch.sum(torch.square(command[:, :2] - actual[:, :2]), dim=1)
   z_error = torch.square(actual[:, 2])
-  lin_vel_error = xy_error + z_error
+  lin_vel_error = xy_error + (2 * z_error)
   return torch.exp(-lin_vel_error / std**2)
 
 
@@ -55,7 +55,9 @@ def track_angular_velocity(
   assert command is not None, f"Command '{command_name}' not found."
   actual = asset.data.root_link_ang_vel_b
   z_error = torch.square(command[:, 2] - actual[:, 2])
-  return torch.exp(-z_error / std**2)
+  xy_error = torch.sum(torch.square(actual[:, :2]), dim=1)
+  ang_vel_error = z_error +(0.05 * xy_error)
+  return torch.exp(-ang_vel_error / std**2)
 
 
 def flat_orientation(
@@ -121,7 +123,7 @@ def angular_momentum_penalty(
 def feet_air_time(
   env: ManagerBasedRlEnv,
   sensor_name: str,
-  threshold: float = 0.3,
+  threshold: float = 0.4,
   command_name: str | None = None,
   command_threshold: float = 0.1,
 ) -> torch.Tensor:
@@ -160,7 +162,7 @@ def feet_clearance(
   foot_vel_xy = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2]  # [B, N, 2]
   vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
   delta = torch.abs(foot_z - target_height)  # [B, N]
-  cost = torch.mean(delta * vel_norm, dim=1)  # [B]
+  cost = torch.sum(delta * vel_norm, dim=1)  # [B]
   if command_name is not None:
     command = env.command_manager.get_command(command_name)
     if command is not None:
@@ -375,7 +377,7 @@ def stand_still(
 ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
     diff_angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
-    reward = torch.sum(torch.square(diff_angle), dim=1)
+    reward = torch.sum(torch.abs(diff_angle), dim=1)
     if command_name is not None:
         command = env.command_manager.get_command(command_name)
         if command is not None:
