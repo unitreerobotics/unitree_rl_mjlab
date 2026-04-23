@@ -1,0 +1,13 @@
+[project]
+name = "unitree_rl_mjlab"
+version = "0.0.1"
+requires-python = ">=3.12"
+
+dependencies = [
+    "mjlab==1.2.0",
+    "mujoco-warp==3.5.0",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

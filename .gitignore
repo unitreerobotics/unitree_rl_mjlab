@@ -12,3 +12,6 @@ deploy/robots/r1/build
 deploy/robots/a2/build
 src/assets/motions/g1/dance1_subject2.npz
 simulate/build
+
+*.egg-info/
+__pycache__/
