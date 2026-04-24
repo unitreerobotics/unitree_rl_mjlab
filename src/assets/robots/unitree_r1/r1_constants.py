@@ -7,7 +7,7 @@ import mujoco
 from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-from mjlab.utils.os import update_assets
+from src.assets.robots._utils import update_assets
 from mjlab.utils.spec_config import CollisionCfg
 
 ##

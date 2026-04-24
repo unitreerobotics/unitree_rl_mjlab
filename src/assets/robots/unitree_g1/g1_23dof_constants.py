@@ -11,7 +11,7 @@ from mjlab.utils.actuator import (
   ElectricActuator,
   reflected_inertia_from_two_stage_planetary,
 )
-from mjlab.utils.os import update_assets
+from src.assets.robots._utils import update_assets
 from mjlab.utils.spec_config import CollisionCfg
 
 ##
