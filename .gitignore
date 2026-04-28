@@ -1,3 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+
 *.egg-info
 .idea
 outputs
@@ -10,5 +14,6 @@ deploy/robots/h1_2/build
 deploy/robots/g1_23dof/build
 deploy/robots/r1/build
 deploy/robots/a2/build
+deploy/robots/b2ygx/build
 src/assets/motions/g1/dance1_subject2.npz
 simulate/build

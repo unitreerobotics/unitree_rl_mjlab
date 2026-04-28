@@ -1,0 +1,51 @@
+FSM:
+  _: # enabled fsms
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    FixDown:
+      id: 3
+      type: FixStand
+    Velocity:
+      id: 4
+      type: RLBase
+  Passive:
+    transitions:
+      FixStand: LT + up.on_pressed
+    mode: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+    kd: [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16]
+  FixStand:
+    transitions:
+      FixDown: LT + down.on_pressed
+      Velocity: RT + A.on_pressed
+    kp: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
+    kd: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]
+    ts: [0, 1, 2]
+    qs: [
+      [],
+      [0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60],
+      [0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5],
+    ]
+  FixDown:
+    transitions:
+      Passive: LT + B.on_pressed
+      FixStand: LT + up.on_pressed
+    kp: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
+    kd: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]
+    ts: [0, 1, 2]
+    qs: [
+      [],
+      [0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60],
+      [0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60, 0.0, 1.36, -2.60],
+    ]
+  Velocity:
+    transitions:
+      FixDown: LT + down.on_pressed
+    policy_dir: config/policy/velocity
+
+Joystick:
+  enabled: true
+  type: xbox
+  device: /dev/input/js0
+  bits: 16

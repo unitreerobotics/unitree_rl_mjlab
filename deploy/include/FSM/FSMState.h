@@ -5,6 +5,7 @@
 #include "FSM/BaseState.h"
 #include "isaaclab/devices/keyboard/keyboard.h"
 #include "unitree_joystick_dsl.hpp"
+#include <unitree/dds_wrapper/common/unitree_joystick.hpp>
 
 class FSMState : public BaseState
 {
@@ -56,6 +57,11 @@ public:
     void pre_run()
     {
         lowstate->update();
+        if(local_joystick)
+        {
+            local_joystick->update();
+            lowstate->joystick.extract(local_joystick->combine());
+        }
         if(keyboard) keyboard->update();
     }
 
@@ -67,4 +73,5 @@ public:
     static std::unique_ptr<LowCmd_t> lowcmd;
     static std::shared_ptr<LowState_t> lowstate;
     static std::shared_ptr<Keyboard> keyboard;
+    inline static std::shared_ptr<unitree::common::UnitreeJoystick> local_joystick = nullptr;
 };
