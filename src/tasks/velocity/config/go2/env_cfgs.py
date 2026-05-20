@@ -27,6 +27,7 @@ def unitree_go2_rough_env_cfg(
 
   cfg.sim.mujoco.ccd_iterations = 500
   cfg.sim.contact_sensor_maxmatch = 500
+  cfg.sim.nconmax = 128
 
   cfg.scene.entities = {"robot": get_go2_robot_cfg()}
 

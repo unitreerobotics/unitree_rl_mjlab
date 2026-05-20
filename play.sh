@@ -2,11 +2,18 @@
 # Runner script: launch mjlab policy playback.
 #
 # Usage:
-#   ./play.sh <task> [--checkpoint PATH] [--headless] [-- EXTRA_ARGS...]
+#   ./play.sh <task> [--checkpoint PATH] [--video] [--video-length N]
+#                    [--video-width W] [--video-height H] [-- EXTRA_ARGS...]
 #
 # Examples:
 #   ./play.sh Unitree-Go2-Flat
 #   ./play.sh go2_velocity --checkpoint logs/.../model_1500.pt
+#   ./play.sh Unitree-Go2-Flat --video                  # record default-length clip
+#   ./play.sh Unitree-Go2-Flat --video --video-length 400
+#
+# When --video is set, a short MP4 is saved under
+#   <checkpoint_dir>/videos/play/rl-video-step-0.mp4
+# convenient for checking playback remotely.
 
 set -euo pipefail
 
@@ -33,11 +40,15 @@ fi
 # ---------------------------------------------------------------------------
 TASK=""
 CHECKPOINT=""
+VIDEO=false
+VIDEO_LENGTH=""
+VIDEO_WIDTH=""
+VIDEO_HEIGHT=""
 EXTRA_ARGS=()
 
 if [[ $# -lt 1 ]]; then
     echo "[ERROR] Task name is required." >&2
-    echo "Usage: $0 <task> [--checkpoint PATH] [--headless] [-- EXTRA_ARGS...]" >&2
+    echo "Usage: $0 <task> [--checkpoint PATH] [--video] [--video-length N] [-- EXTRA_ARGS...]" >&2
     exit 1
 fi
 
@@ -50,9 +61,21 @@ while [[ $# -gt 0 ]]; do
             CHECKPOINT="$2"
             shift 2
             ;;
-        --headless)
-            EXTRA_ARGS+=("--headless")
+        --video)
+            VIDEO=true
             shift
+            ;;
+        --video-length)
+            VIDEO_LENGTH="$2"
+            shift 2
+            ;;
+        --video-width)
+            VIDEO_WIDTH="$2"
+            shift 2
+            ;;
+        --video-height)
+            VIDEO_HEIGHT="$2"
+            shift 2
             ;;
         --)
             shift
@@ -89,11 +112,55 @@ CMD=(
     "--num-envs=1"
 )
 
+if [[ "${VIDEO}" == "true" ]]; then
+    CMD+=("--video" "True")
+    [[ -n "${VIDEO_LENGTH}" ]] && CMD+=("--video-length=${VIDEO_LENGTH}")
+    [[ -n "${VIDEO_WIDTH}"  ]] && CMD+=("--video-width=${VIDEO_WIDTH}")
+    [[ -n "${VIDEO_HEIGHT}" ]] && CMD+=("--video-height=${VIDEO_HEIGHT}")
+    VIDEO_DIR="$(dirname "${CHECKPOINT}")/videos/play"
+
+    # An X-forwarded DISPLAY (e.g. `host:10.0` over SSH) sets DISPLAY but cannot
+    # actually drive GLFW/OpenGL. Treat it like "no local display".
+    HAS_LOCAL_DISPLAY=false
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        HAS_LOCAL_DISPLAY=true
+    elif [[ -n "${DISPLAY:-}" && -z "${SSH_CONNECTION:-}" && -z "${SSH_CLIENT:-}" ]]; then
+        HAS_LOCAL_DISPLAY=true
+    fi
+
+    # Headless offscreen rendering requires a GL backend. EGL works on
+    # NVIDIA / Mesa hosts without a display server.
+    if [[ "${HAS_LOCAL_DISPLAY}" == "false" && -z "${MUJOCO_GL:-}" ]]; then
+        export MUJOCO_GL=egl
+        echo "[INFO] No local display detected; setting MUJOCO_GL=egl for offscreen render."
+    fi
+
+    # Avoid GLFW (native viewer) when DISPLAY is X-forwarded — pick the headless
+    # viser viewer unless the user already passed --viewer.
+    if [[ "${HAS_LOCAL_DISPLAY}" == "false" ]]; then
+        VIEWER_ALREADY_SET=false
+        for arg in "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"; do
+            if [[ "${arg}" == --viewer* ]]; then
+                VIEWER_ALREADY_SET=true
+                break
+            fi
+        done
+        if [[ "${VIEWER_ALREADY_SET}" == "false" ]]; then
+            EXTRA_ARGS+=("--viewer=viser")
+            echo "[INFO] Using viser viewer (no local display)."
+        fi
+    fi
+fi
+
 CMD+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
 
 echo "[INFO] Python      : ${PYTHON_BIN}"
 echo "[INFO] Task        : ${TASK}"
 echo "[INFO] Checkpoint  : ${CHECKPOINT}"
+if [[ "${VIDEO}" == "true" ]]; then
+    echo "[INFO] Video dir   : ${VIDEO_DIR}"
+    [[ -n "${VIDEO_LENGTH}" ]] && echo "[INFO] Video length: ${VIDEO_LENGTH} frames"
+fi
 echo "[INFO] Command     : ${CMD[*]}"
 echo
 
