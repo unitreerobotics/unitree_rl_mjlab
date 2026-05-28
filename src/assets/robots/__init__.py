@@ -52,3 +52,8 @@ from .unitree_h2.h2_constants import (
 from .unitree_h2.h2_constants import (
   get_h2_robot_cfg as get_h2_robot_cfg,
 )
+
+from .unitree_go2w.go2w_constants import (
+  get_go2w_robot_cfg as get_go2w_robot_cfg,
+)
+

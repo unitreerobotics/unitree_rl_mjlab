@@ -50,7 +50,7 @@
   </asset>
   <worldbody>
     <body name="base_link" pos="0 0 0.8" childclass="b2">
-      <inertial pos="0 0 0" quat="1 0 0 0" mass="40.8426" diaginertia="0.472524 1.466128 1.708234"/>
+      <inertial pos="0 0 0" quat="1 0 0 0" mass="35" diaginertia="0.404929 1.256396 1.463868"/>
       <joint name="floating_base_joint" type="free"/>
       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="base_link"/>
       <geom name="base1_collision" size="0.315 0.162 0.092" type="box" rgba="0.7 0.7 0.7 1" class="collision"/>
@@ -69,7 +69,7 @@
       <geom pos="-0.00451008 0.0252504 -0.0262476" quat="0.707107 -0.707107 -1.29867e-06 -1.29867e-06" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0 0 0 1" mesh="r_oc_link"/>
       <site name="imu" pos="0 -0.02341 0.04927"/>
       <body name="FL_hip" pos="0.3945 0.09 0">
-        <inertial pos="-0.00829923 -0.00998502 0.000235465" quat="0.525168 0.518964 0.477213 0.476595" mass="2.9294" diaginertia="0.00562325 0.00429228 0.00321016"/>
+        <inertial pos="-0.00829923 -0.00998502 0.000235465" quat="0.525168 0.518964 0.477213 0.476595" mass="2.2" diaginertia="0.00422310 0.00322353 0.00241085"/>
         <joint name="FL_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.70 0.70"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="FL_hip"/>
         <geom name="FL_hip_collision" size="0.07 0.025" pos="0 0.12 0" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.7 0.7 0.7 1" class="collision"/>
@@ -94,7 +94,7 @@
         </body>
       </body>
       <body name="FR_hip" pos="0.3945 -0.09 0">
-        <inertial pos="-0.00829923 0.00998502 0.000235465" quat="0.476595 0.477213 0.518964 0.525168" mass="2.9294" diaginertia="0.00562325 0.00429228 0.00321016"/>
+        <inertial pos="-0.00829923 0.00998502 0.000235465" quat="0.476595 0.477213 0.518964 0.525168" mass="2.2" diaginertia="0.00422310 0.00322353 0.00241085"/>
         <joint name="FR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.70 0.70"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="FR_hip"/>
         <geom name="FR_hip_collision" size="0.07 0.025" pos="0 -0.12 0" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.7 0.7 0.7 1" class="collision"/>
@@ -119,7 +119,7 @@
         </body>
       </body>
       <body name="RL_hip" pos="-0.3945 0.09 0">
-        <inertial pos="0.00829923 -0.00998502 0.000235465" quat="0.477213 0.476595 0.525168 0.518964" mass="2.9294" diaginertia="0.00562325 0.00429228 0.00321016"/>
+        <inertial pos="0.00829923 -0.00998502 0.000235465" quat="0.477213 0.476595 0.525168 0.518964" mass="2.2" diaginertia="0.00422310 0.00322353 0.00241085"/>
         <joint name="RL_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.70 0.70"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="RL_hip"/>
         <geom name="RL_hip_collision" size="0.07 0.025" pos="0 0.12 0" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.7 0.7 0.7 1" class="collision"/>
@@ -144,7 +144,7 @@
         </body>
       </body>
       <body name="RR_hip" pos="-0.3945 -0.09 0">
-        <inertial pos="0.00829923 -0.00825992 0.000235465" quat="0.524846 0.53164 0.469132 0.470967" mass="2.9294" diaginertia="0.00563528 0.00438444 0.00329035"/>
+        <inertial pos="0.00829923 -0.00825992 0.000235465" quat="0.524846 0.53164 0.469132 0.470967" mass="2.2" diaginertia="0.00423213 0.00329274 0.00247108"/>
         <joint name="RR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.70 0.70"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="RR_hip"/>
         <geom name="RR_hip_collision" size="0.07 0.025" pos="0 -0.12 0" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.7 0.7 0.7 1" class="collision"/>

@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/w/rl/unitree_rl_mjlab/deploy/robots/go2w/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
