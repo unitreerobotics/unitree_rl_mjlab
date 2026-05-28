@@ -40,7 +40,7 @@ def unitree_b2ygx_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       max_grad_norm=1.0,
     ),
     experiment_name="b2ygx_velocity",
-    save_interval=100,
+    save_interval=1000,
     num_steps_per_env=24,
-    max_iterations=10001,
+    max_iterations=20000,
   )

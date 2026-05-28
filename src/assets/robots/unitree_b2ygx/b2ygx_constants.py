@@ -69,10 +69,10 @@ B2YGX_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
 ##
 
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.546),
+  pos=(0.0, 0.0, 0.467),
   joint_pos={
-    ".*thigh_joint": 0.8,
-    ".*calf_joint": -1.5,
+    ".*thigh_joint": 0.9,
+    ".*calf_joint": -1.8,
     ".*hip_joint": 0.0,
   },
   joint_vel={".*": 0.0},

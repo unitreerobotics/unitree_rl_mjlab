@@ -22,7 +22,7 @@ DEFAULT_LOG_ROOT = REPO_ROOT / "logs" / "rsl_rl" / "b2ygx_velocity"
 DEFAULT_DEPLOY_ROOT = REPO_ROOT / "deploy" / "robots" / "b2ygx"
 DEPLOY_POLICY_DIR = Path("config/policy/velocity/v0")
 EXPECTED_JOINT_IDS_MAP = [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]
-EXPECTED_DEFAULT_JOINT_POS = [0.0, 0.8, -1.5] * 4
+EXPECTED_DEFAULT_JOINT_POS = [0.0, 0.9, -1.8] * 4
 EXPECTED_OBSERVATIONS = [
   "base_ang_vel",
   "projected_gravity",
@@ -92,8 +92,10 @@ def validate_deploy_yaml(deploy_yaml: Path) -> list[str]:
   if abs(float(cfg.get("step_dt", -1.0)) - 0.02) > 1.0e-6:
     errors.append(f"step_dt: expected 0.02, got {cfg.get('step_dt')}")
 
-  _check_close("stiffness", _as_float_list(cfg.get("stiffness")), [160.0] * 12, errors)
-  _check_close("damping", _as_float_list(cfg.get("damping")), [8.0] * 12, errors)
+  expected_stiffness = [200.0, 200.0, 240.0] * 4
+  expected_damping = [10.0, 10.0, 12.0] * 4
+  _check_close("stiffness", _as_float_list(cfg.get("stiffness")), expected_stiffness, errors)
+  _check_close("damping", _as_float_list(cfg.get("damping")), expected_damping, errors)
   _check_close(
     "default_joint_pos",
     _as_float_list(cfg.get("default_joint_pos")),
