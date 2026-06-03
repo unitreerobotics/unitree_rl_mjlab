@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="220" viewBox="0 0 1200 220" role="img" aria-labelledby="title desc">
+  <title id="title">Attribution colormap legend</title>
+  <desc id="desc">Legend for normalized attribution score from 0.0 to 1.0 using the same colormap as the attribution viewer.</desc>
+  <defs>
+    <linearGradient id="attribution-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgb(20,30,92)" />
+      <stop offset="25%" stop-color="rgb(42,151,194)" />
+      <stop offset="50%" stop-color="rgb(157,217,86)" />
+      <stop offset="75%" stop-color="rgb(255,214,74)" />
+      <stop offset="100%" stop-color="rgb(218,70,54)" />
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="220" fill="white" />
+  <text x="80" y="48" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#1f2933">
+    Normalized attribution score
+  </text>
+  <text x="1120" y="48" font-family="Arial, Helvetica, sans-serif" font-size="24" text-anchor="end" fill="#52606d">
+    max_score / color scale
+  </text>
+
+  <rect x="80" y="78" width="1040" height="64" rx="8" fill="url(#attribution-gradient)" />
+  <rect x="80" y="78" width="1040" height="64" rx="8" fill="none" stroke="#1f2933" stroke-opacity="0.22" stroke-width="2" />
+
+  <g font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#323f4b">
+    <line x1="80" y1="150" x2="80" y2="164" stroke="#323f4b" stroke-width="2" />
+    <line x1="340" y1="150" x2="340" y2="164" stroke="#323f4b" stroke-width="2" />
+    <line x1="600" y1="150" x2="600" y2="164" stroke="#323f4b" stroke-width="2" />
+    <line x1="860" y1="150" x2="860" y2="164" stroke="#323f4b" stroke-width="2" />
+    <line x1="1120" y1="150" x2="1120" y2="164" stroke="#323f4b" stroke-width="2" />
+
+    <text x="80" y="194" text-anchor="middle">0.00</text>
+    <text x="340" y="194" text-anchor="middle">0.25</text>
+    <text x="600" y="194" text-anchor="middle">0.50</text>
+    <text x="860" y="194" text-anchor="middle">0.75</text>
+    <text x="1120" y="194" text-anchor="middle">1.00</text>
+  </g>
+</svg>
