@@ -24,21 +24,38 @@ class ManagedProcess:
     cwd: Path
     env_overrides: dict[str, str]
     log_path: Path
-    process: subprocess.Popen
+    process: subprocess.Popen | None
     url: str | None = None
     started_at: float = 0.0
+    pid_value: int | None = None
 
     @property
     def pid(self) -> int:
-        return self.process.pid
+        if self.process is not None:
+            return self.process.pid
+        if self.pid_value is None:
+            raise RuntimeError("ManagedProcess has neither process nor pid_value")
+        return self.pid_value
 
     @property
     def is_running(self) -> bool:
-        return self.process.poll() is None
+        if self.process is not None:
+            return self.process.poll() is None
+        return is_pid_running(self.pid)
 
     @property
     def returncode(self) -> int | None:
-        return self.process.poll()
+        if self.process is not None:
+            return self.process.poll()
+        return None if is_pid_running(self.pid) else 0
+
+
+def is_pid_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
 def is_port_listening(host: str, port: int, timeout: float = 0.2) -> bool:
@@ -149,23 +166,142 @@ def start_process(
     )
 
 
+def _terminate_pid(pid: int, sig: signal.Signals) -> None:
+    try:
+        pgid = os.getpgid(pid)
+    except OSError:
+        return
+    try:
+        if pgid == pid:
+            os.killpg(pgid, sig)
+        else:
+            os.kill(pid, sig)
+    except ProcessLookupError:
+        return
+
+
 def stop_process(proc: ManagedProcess, timeout: float = 5.0) -> None:
     if not proc.is_running:
         return
-    try:
-        os.killpg(proc.process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    except OSError:
-        proc.process.terminate()
-    try:
-        proc.process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    pid = proc.pid
+    _terminate_pid(pid, signal.SIGTERM)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not proc.is_running:
+            return
+        time.sleep(0.1)
+    _terminate_pid(pid, signal.SIGKILL)
+    if proc.process is not None:
         try:
-            os.killpg(proc.process.pid, signal.SIGKILL)
+            proc.process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def _read_proc_cmdline(pid: int) -> list[str]:
+    try:
+        data = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return []
+    return [part.decode("utf-8", errors="replace") for part in data.split(b"\0") if part]
+
+
+def _read_proc_environ(pid: int) -> dict[str, str]:
+    try:
+        data = (Path("/proc") / str(pid) / "environ").read_bytes()
+    except OSError:
+        return {}
+    env: dict[str, str] = {}
+    for part in data.split(b"\0"):
+        if not part or b"=" not in part:
+            continue
+        key, value = part.split(b"=", 1)
+        env[key.decode("utf-8", errors="replace")] = value.decode("utf-8", errors="replace")
+    return env
+
+
+def _read_proc_cwd(pid: int) -> Path | None:
+    try:
+        return Path(os.readlink(Path("/proc") / str(pid) / "cwd"))
+    except OSError:
+        return None
+
+
+def _listening_tcp_ports() -> dict[str, int]:
+    ports: dict[str, int] = {}
+    for path in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
+        try:
+            lines = path.read_text().splitlines()[1:]
         except OSError:
-            proc.process.kill()
-        proc.process.wait(timeout=timeout)
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 10 or parts[3] != "0A":
+                continue
+            try:
+                port = int(parts[1].rsplit(":", 1)[1], 16)
+            except (IndexError, ValueError):
+                continue
+            ports[parts[9]] = port
+    return ports
+
+
+def _proc_listening_ports(pid: int) -> list[int]:
+    inode_to_port = _listening_tcp_ports()
+    fd_dir = Path("/proc") / str(pid) / "fd"
+    ports: list[int] = []
+    try:
+        fd_paths = list(fd_dir.iterdir())
+    except OSError:
+        return ports
+    for fd_path in fd_paths:
+        try:
+            target = os.readlink(fd_path)
+        except OSError:
+            continue
+        if not (target.startswith("socket:[") and target.endswith("]")):
+            continue
+        inode = target.removeprefix("socket:[").removesuffix("]")
+        port = inode_to_port.get(inode)
+        if port is not None:
+            ports.append(port)
+    return sorted(set(ports))
+
+
+def discover_play_processes(repo_root: Path) -> list[ManagedProcess]:
+    repo_root = repo_root.resolve()
+    found: list[ManagedProcess] = []
+    for proc_dir in Path("/proc").iterdir():
+        if not proc_dir.name.isdigit():
+            continue
+        pid = int(proc_dir.name)
+        command = _read_proc_cmdline(pid)
+        if not command or not any(arg.endswith("scripts/play.py") for arg in command):
+            continue
+        cwd = _read_proc_cwd(pid)
+        command_text = " ".join(command)
+        if cwd != repo_root and str(repo_root) not in command_text:
+            continue
+        env = _read_proc_environ(pid)
+        viewer_ports = [port for port in _proc_listening_ports(pid) if 8080 <= port <= 8099]
+        env_port = env.get("_VISER_PORT_OVERRIDE")
+        port = str(viewer_ports[0]) if viewer_ports else env_port
+        url = f"http://localhost:{port}" if port and port.isdigit() else None
+        found.append(
+            ManagedProcess(
+                label=f"external_play_{pid}",
+                command=command,
+                cwd=cwd or repo_root,
+                env_overrides={},
+                log_path=RUNTIME_DIR / f"external_play_{pid}.log",
+                process=None,
+                url=url,
+                started_at=0.0,
+                pid_value=pid,
+            )
+        )
+    found.sort(key=lambda proc: proc.pid)
+    return found
 
 
 def read_recent_output(path: Path, max_bytes: int = 8000) -> str:

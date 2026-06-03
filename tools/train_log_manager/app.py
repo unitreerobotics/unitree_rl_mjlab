@@ -584,15 +584,24 @@ def _render_processes() -> None:
     for key in stale[:-5]:
         procs.pop(key, None)
 
+    tracked_pids = {proc.pid for proc in procs.values()}
+    external_procs = [
+        proc
+        for proc in proc_mgr.discover_play_processes(REPO_ROOT)
+        if proc.pid not in tracked_pids
+    ]
+
     tb_proc = st.session_state.get(_TB_PROC_KEY)
-    if not procs and tb_proc is None:
+    if not procs and not external_procs and tb_proc is None:
         return
 
-    with st.expander("Launched processes", expanded=bool(procs)):
+    with st.expander("Launched processes", expanded=bool(procs or external_procs)):
         if tb_proc is not None:
             _render_managed_process(tb_proc, key_prefix="tb")
         for key, proc in list(procs.items()):
             _render_managed_process(proc, key_prefix=f"play_{key}")
+        for proc in external_procs:
+            _render_managed_process(proc, key_prefix=f"external_play_{proc.pid}")
 
 
 def _render_run_actions(
