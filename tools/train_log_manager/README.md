@@ -17,6 +17,10 @@ streamlit run tools/train_log_manager/app.py -- --logs-root logs/rsl_rl
 
 Open http://localhost:8501 (port-forward it if running over SSH).
 
+When using VS Code Remote, start Streamlit from the integrated terminal. Play and
+TensorBoard launches print their local URLs in that terminal after the background
+server starts, which lets VS Code auto-forward the allocated ports.
+
 Flags:
 
 - `--logs-root PATH` - directory containing `<experiment>/<run_id>/` subdirs.

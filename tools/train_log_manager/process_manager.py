@@ -6,7 +6,10 @@ import os
 import signal
 import socket
 import subprocess
+import threading
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -56,6 +59,56 @@ def find_free_port(start: int, end: int, host: str = "127.0.0.1") -> int:
                 continue
             return port
     raise RuntimeError(f"No free port found in {start}-{end}")
+
+
+def _is_url_reachable(url: str, host: str, port: int, timeout: float = 0.5) -> bool:
+    if not url.startswith(("http://", "https://")):
+        return is_port_listening(host, port, timeout=timeout)
+
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read(1)
+        return True
+    except urllib.error.HTTPError:
+        return True
+    except OSError:
+        return False
+
+
+def announce_url_when_listening(
+    *,
+    proc: ManagedProcess,
+    host: str,
+    port: int,
+    url: str,
+    label: str,
+    timeout: float = 300.0,
+    poll_interval: float = 0.5,
+) -> None:
+    """Print a URL when a child process starts listening on the expected port.
+
+    VS Code Remote watches integrated terminal output and auto-forwards URLs it
+    sees there. Background child output is redirected to log files, so the parent
+    Streamlit process needs to print the viewer URL itself.
+    """
+
+    def _worker() -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not proc.is_running:
+                return
+            if _is_url_reachable(url, host, port):
+                print(f"{label}: {url}", flush=True)
+                return
+            time.sleep(poll_interval)
+
+    thread = threading.Thread(
+        target=_worker,
+        name=f"announce-url-{proc.pid}-{port}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def start_process(

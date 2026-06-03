@@ -509,6 +509,13 @@ def _start_play_process(
         env_overrides={"_VISER_PORT_OVERRIDE": str(port)},
         url=url,
     )
+    proc_mgr.announce_url_when_listening(
+        proc=proc,
+        host="127.0.0.1",
+        port=port,
+        url=f"http://localhost:{port}",
+        label="Train Log Manager Play viewer",
+    )
     key = f"{proc.pid}:{run.experiment}/{run.run_id}:{task_id}:{checkpoint.name}"
     _play_processes()[key] = proc
     return proc
@@ -542,6 +549,13 @@ def _ensure_tensorboard(args: argparse.Namespace, tb_url: str) -> str:
         command=command,
         cwd=REPO_ROOT,
         url=tb_url,
+    )
+    proc_mgr.announce_url_when_listening(
+        proc=proc,
+        host=_connect_host(args.tb_host),
+        port=args.tb_port,
+        url=f"http://localhost:{args.tb_port}",
+        label="Train Log Manager TensorBoard",
     )
     st.session_state[_TB_PROC_KEY] = proc
     st.session_state[_TB_MESSAGE_KEY] = f"Started TensorBoard as PID {proc.pid}."
