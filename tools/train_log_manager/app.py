@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -21,11 +22,13 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import columns as col_mod  # noqa: E402
+import process_manager as proc_mgr  # noqa: E402
 from diff import dict_diff, dot_get  # noqa: E402
-from scanner import Run, scan_runs  # noqa: E402
+from scanner import Run, checkpoint_iter, scan_runs  # noqa: E402
 
 
-DEFAULT_LOGS_ROOT = Path(__file__).resolve().parents[1] / "logs" / "rsl_rl"
+REPO_ROOT = _HERE.parents[1]
+DEFAULT_LOGS_ROOT = REPO_ROOT / "logs" / "rsl_rl"
 CONFIG_PATH = _HERE / ".columns.json"
 
 
@@ -39,8 +42,36 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--tb-url",
-        default="http://localhost:6006",
-        help="TensorBoard base URL — run_id cells link into it with #timeseries&regexInput=<run_id>.",
+        default=None,
+        help="TensorBoard base URL. Defaults to http://localhost:<tb-port>.",
+    )
+    parser.add_argument(
+        "--tb-host",
+        default="localhost",
+        help="Host passed to TensorBoard when auto-starting it.",
+    )
+    parser.add_argument(
+        "--tb-port",
+        type=int,
+        default=6006,
+        help="Port used for TensorBoard auto-start and default links.",
+    )
+    parser.add_argument(
+        "--viewer-url-host",
+        default="localhost",
+        help="Host used when building links to launched Viser viewers.",
+    )
+    parser.add_argument(
+        "--viewer-port-start",
+        type=int,
+        default=8080,
+        help="First Viser port the app may allocate for play launches.",
+    )
+    parser.add_argument(
+        "--viewer-port-end",
+        type=int,
+        default=8099,
+        help="Last Viser port the app may allocate for play launches.",
     )
     # Streamlit passes its own flags before "--"; argparse only sees what's after.
     return parser.parse_args()
@@ -97,6 +128,7 @@ def _init_columns() -> list[dict]:
     # them, or encoded them without the protected flag.
     _required = [
         {"name": "run_id",           "source": "builtin", "kind": "builtin", "path": "run_id",           "protected": True},
+        {"name": "task_id",          "source": "builtin", "kind": "builtin", "path": "task_id",          "protected": True},
         {"name": "max_iter",         "source": "builtin", "kind": "builtin", "path": "max_iter",         "protected": True},
         {"name": "max_mean_reward",  "source": "builtin", "kind": "builtin", "path": "max_mean_reward",  "protected": True},
     ]
@@ -390,27 +422,260 @@ def _cellstr(v) -> str:
     return str(v)
 
 
-def _render_detail(runs: list[Run]) -> None:
-    st.subheader("Detail / compare")
-    if len(runs) < 1:
-        st.info("No runs found.")
+_PLAY_PROCS_KEY = "play_processes"
+_TB_PROC_KEY = "tensorboard_process"
+_TB_MESSAGE_KEY = "tensorboard_message"
+_LAST_TB_RUN_URL_KEY = "last_tensorboard_run_url"
+
+_ATTRIBUTION_METHODS = (
+    "integrated_gradients",
+    "gradient_saliency",
+    "gradient_input",
+    "deep_lift_rescale",
+    "deep_shap",
+)
+
+
+@st.cache_data(show_spinner=False)
+def _go2_task_ids() -> list[str]:
+    try:
+        import mjlab.tasks  # noqa: F401
+        import src.tasks  # noqa: F401
+        from mjlab.tasks.registry import list_tasks
+    except Exception:
+        return ["Unitree-Go2-Test"]
+    tasks = [task for task in list_tasks() if task.startswith("Unitree-Go2-")]
+    return tasks or ["Unitree-Go2-Test"]
+
+
+def _default_index(options: list[str], preferred: str) -> int:
+    try:
+        return options.index(preferred)
+    except ValueError:
+        return 0
+
+
+def _effective_tb_url(args: argparse.Namespace) -> str:
+    return args.tb_url or f"http://localhost:{args.tb_port}"
+
+
+def _connect_host(host: str) -> str:
+    return "127.0.0.1" if host in {"0.0.0.0", "localhost"} else host
+
+
+def _checkpoint_label(path: Path) -> str:
+    iteration = checkpoint_iter(path)
+    if iteration is None:
+        return path.name
+    return f"{path.name} (iter {iteration})"
+
+
+def _play_processes() -> dict[str, proc_mgr.ManagedProcess]:
+    procs = st.session_state.setdefault(_PLAY_PROCS_KEY, {})
+    return procs
+
+
+def _start_play_process(
+    *,
+    run: Run,
+    task_id: str,
+    checkpoint: Path,
+    attribution: bool,
+    attribution_method: str,
+    args: argparse.Namespace,
+) -> proc_mgr.ManagedProcess:
+    port = proc_mgr.find_free_port(args.viewer_port_start, args.viewer_port_end)
+    url = f"http://{args.viewer_url_host}:{port}"
+    command = [
+        sys.executable,
+        "scripts/play.py",
+        task_id,
+        "--checkpoint-file",
+        str(checkpoint.resolve()),
+        "--viewer",
+        "viser",
+    ]
+    if attribution:
+        command.extend([
+            "--attribution",
+            "True",
+            "--attribution-method",
+            attribution_method,
+        ])
+    proc = proc_mgr.start_process(
+        label=f"play_{run.experiment}_{run.run_id}_{task_id}_{checkpoint.stem}",
+        command=command,
+        cwd=REPO_ROOT,
+        env_overrides={"_VISER_PORT_OVERRIDE": str(port)},
+        url=url,
+    )
+    key = f"{proc.pid}:{run.experiment}/{run.run_id}:{task_id}:{checkpoint.name}"
+    _play_processes()[key] = proc
+    return proc
+
+
+def _ensure_tensorboard(args: argparse.Namespace, tb_url: str) -> str:
+    existing = st.session_state.get(_TB_PROC_KEY)
+    if existing is not None and existing.is_running:
+        st.session_state[_TB_MESSAGE_KEY] = f"TensorBoard is running as PID {existing.pid}."
+        return tb_url
+
+    if proc_mgr.is_port_listening(_connect_host(args.tb_host), args.tb_port):
+        st.session_state[_TB_MESSAGE_KEY] = (
+            f"Port {args.tb_port} is already listening; using existing TensorBoard URL."
+        )
+        return tb_url
+
+    command = [
+        sys.executable,
+        "-m",
+        "tensorboard.main",
+        "--logdir",
+        str(args.logs_root.resolve()),
+        "--host",
+        args.tb_host,
+        "--port",
+        str(args.tb_port),
+    ]
+    proc = proc_mgr.start_process(
+        label="tensorboard",
+        command=command,
+        cwd=REPO_ROOT,
+        url=tb_url,
+    )
+    st.session_state[_TB_PROC_KEY] = proc
+    st.session_state[_TB_MESSAGE_KEY] = f"Started TensorBoard as PID {proc.pid}."
+    return tb_url
+
+
+def _render_managed_process(proc: proc_mgr.ManagedProcess, *, key_prefix: str) -> None:
+    status = "running" if proc.is_running else f"exited ({proc.returncode})"
+    st.caption(f"{proc.label} | PID {proc.pid} | {status}")
+    cols = st.columns([1, 1, 5])
+    if proc.url:
+        cols[0].link_button("Open", proc.url)
+    if cols[1].button("Stop", key=f"{key_prefix}_stop_{proc.pid}", disabled=not proc.is_running):
+        proc_mgr.stop_process(proc)
+        st.rerun()
+    st.code(shlex.join(proc.command), language="bash")
+    output = proc_mgr.read_recent_output(proc.log_path)
+    if output:
+        with st.expander("Recent output", expanded=not proc.is_running):
+            st.code(output)
+
+
+def _render_processes() -> None:
+    procs = _play_processes()
+    stale = [key for key, proc in procs.items() if not proc.is_running and proc.returncode == 0]
+    for key in stale[:-5]:
+        procs.pop(key, None)
+
+    tb_proc = st.session_state.get(_TB_PROC_KEY)
+    if not procs and tb_proc is None:
         return
 
-    labels = [f"{r.experiment}/{r.run_id}" for r in runs]
-    c1, c2 = st.columns(2)
-    base_label = c1.selectbox("Base run", labels, index=0, key="base_run")
-    default_other = 1 if len(labels) > 1 else 0
-    other_label = c2.selectbox(
-        "Compare against", labels, index=default_other, key="other_run"
+    with st.expander("Launched processes", expanded=bool(procs)):
+        if tb_proc is not None:
+            _render_managed_process(tb_proc, key_prefix="tb")
+        for key, proc in list(procs.items()):
+            _render_managed_process(proc, key_prefix=f"play_{key}")
+
+
+def _render_run_actions(
+    run: Run,
+    *,
+    args: argparse.Namespace,
+    tb_url: str,
+    task_ids: list[str],
+) -> None:
+    st.subheader("Actions")
+    st.caption(f"Selected `{run.experiment}/{run.run_id}`")
+
+    play_tab, tb_tab = st.tabs(["Play", "TensorBoard"])
+
+    with play_tab:
+        if not run.checkpoints:
+            st.warning("This run has no `model_<iter>.pt` checkpoints.")
+        checkpoint_labels = [_checkpoint_label(path) for path in run.checkpoints]
+        c1, c2 = st.columns([2, 2])
+        preferred_task = run.task_id if run.task_id in task_ids else "Unitree-Go2-Test"
+        task_id = c1.selectbox(
+            "Environment",
+            task_ids,
+            index=_default_index(task_ids, preferred_task),
+        )
+        checkpoint_index = max(len(run.checkpoints) - 1, 0)
+        checkpoint_label = c2.selectbox(
+            "Checkpoint",
+            checkpoint_labels or ["No checkpoints"],
+            index=checkpoint_index,
+            disabled=not run.checkpoints,
+        )
+        c3, c4 = st.columns([1, 2])
+        attribution = c3.checkbox("Attribution", value=True)
+        attribution_method = c4.selectbox(
+            "Attribution method",
+            _ATTRIBUTION_METHODS,
+            index=_default_index(list(_ATTRIBUTION_METHODS), "deep_shap"),
+            disabled=not attribution,
+        )
+        selected_checkpoint = (
+            run.checkpoints[checkpoint_labels.index(checkpoint_label)]
+            if run.checkpoints
+            else None
+        )
+        disabled = selected_checkpoint is None
+        if st.button("Play", disabled=disabled, type="primary") and selected_checkpoint is not None:
+            try:
+                proc = _start_play_process(
+                    run=run,
+                    task_id=task_id,
+                    checkpoint=selected_checkpoint,
+                    attribution=attribution,
+                    attribution_method=attribution_method,
+                    args=args,
+                )
+            except Exception as exc:
+                st.error(f"Could not start play process: {exc}")
+            else:
+                st.success(f"Started play process PID {proc.pid}.")
+                if proc.url:
+                    st.link_button("Open Viser", proc.url)
+                st.code(shlex.join(proc.command), language="bash")
+
+    with tb_tab:
+        run_url = _tb_run_url(tb_url, run.run_id)
+        if st.button("View in TensorBoard", type="primary"):
+            try:
+                _ensure_tensorboard(args, tb_url)
+            except Exception as exc:
+                st.error(f"Could not start TensorBoard: {exc}")
+            else:
+                st.session_state[_LAST_TB_RUN_URL_KEY] = run_url
+        message = st.session_state.get(_TB_MESSAGE_KEY)
+        if message:
+            st.info(message)
+        last_url = st.session_state.get(_LAST_TB_RUN_URL_KEY)
+        if last_url:
+            st.link_button("Open TensorBoard", last_url)
+        st.caption("TensorBoard is filtered to the selected run.")
+
+
+def _render_detail(base: Run, other: Run) -> None:
+    st.subheader("Detail / compare")
+    st.caption(
+        f"Comparing `{base.experiment}/{base.run_id}` against "
+        f"`{other.experiment}/{other.run_id}`"
     )
-    base = runs[labels.index(base_label)]
-    other = runs[labels.index(other_label)]
 
     tab_yaml, tab_git = st.tabs(["YAML diff", "Git diff"])
 
     with tab_yaml:
-        for label, a, b in (("env.yaml", base.env, other.env),
-                            ("agent.yaml", base.agent, other.agent)):
+        for label, a, b in (
+            ("run.yaml", base.run, other.run),
+            ("env.yaml", base.env, other.env),
+            ("agent.yaml", base.agent, other.agent),
+        ):
             st.markdown(f"**{label}**")
             rows = dict_diff(a, b)
             if not rows:
@@ -440,6 +705,8 @@ def main() -> None:
     args = _parse_args()
 
     cols_state = _init_columns()
+    tb_url = _effective_tb_url(args)
+    task_ids = _go2_task_ids()
 
     st.title("Train Log Manager")
     st.caption(f"Scanning `{args.logs_root}`")
@@ -457,11 +724,13 @@ def main() -> None:
         _cached_scan.clear()
         st.rerun()
 
-    df, run_ids = _build_table(runs, cols_state, args.tb_url)
+    df, _ = _build_table(runs, cols_state, tb_url)
+    display_runs = runs
     mask = _filter_mask(df, query)
     if mask is not None:
+        keep_flags = mask.tolist()
         df = df[mask].reset_index(drop=True)
-        run_ids = [rid for rid, keep in zip(run_ids, mask.tolist()) if keep]
+        display_runs = [run for run, keep in zip(runs, keep_flags) if keep]
 
     event = st.dataframe(
         df,
@@ -479,6 +748,7 @@ def main() -> None:
                 display_text=r"regexInput=(.+)\$$",
                 pinned=True,
             ),
+            "task_id": st.column_config.Column("task_id", pinned=True),
             "max_iter": st.column_config.Column("max_iter", pinned=True),
             "max_mean_reward": st.column_config.NumberColumn(
                 "max_mean_reward", pinned=True, format="%.3f"
@@ -488,23 +758,28 @@ def main() -> None:
     st.caption(f"{len(df)} / {len(runs)} runs shown")
 
     selected_rows = list(getattr(event.selection, "rows", []) or [])
-    if selected_rows:
-        selected_ids = [run_ids[i] for i in selected_rows if 0 <= i < len(run_ids)]
-        if selected_ids:
-            combined = (
-                f"{args.tb_url.rstrip('/')}/#timeseries&regexInput="
-                f"{_tb_run_regex(selected_ids)}"
-            )
-            st.link_button(
-                f"Open {len(selected_ids)} selected run"
-                f"{'s' if len(selected_ids) != 1 else ''} in TensorBoard",
-                combined,
-            )
+    selected_runs = [
+        display_runs[index]
+        for index in selected_rows
+        if 0 <= index < len(display_runs)
+    ]
+    if len(selected_runs) == 1:
+        _render_run_actions(
+            selected_runs[0],
+            args=args,
+            tb_url=tb_url,
+            task_ids=task_ids,
+        )
+    elif len(selected_runs) == 2:
+        _render_detail(selected_runs[0], selected_runs[1])
+    elif len(selected_runs) > 2:
+        st.info("Select one run for Actions, or exactly two runs for Detail / compare.")
+    else:
+        st.info("Select one run for Actions, or two runs for Detail / compare.")
+
+    _render_processes()
 
     _render_column_manager(runs)
-
-    st.divider()
-    _render_detail(runs)
 
 
 if __name__ == "__main__":

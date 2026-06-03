@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
 
+import torch
 import tyro
 
 from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
@@ -39,6 +40,58 @@ class TrainConfig:
     return TrainConfig(env=env_cfg, agent=agent_cfg)
 
 
+def _parse_visible_gpus(value: str) -> list[int]:
+  return [int(part) for part in value.split(",") if part.strip()]
+
+
+def _optional_env(name: str) -> str | None:
+  value = os.environ.get(name)
+  return value if value not in (None, "") else None
+
+
+def _build_run_metadata(
+  task_id: str,
+  cfg: TrainConfig,
+  log_dir: Path,
+  device: str,
+) -> dict:
+  cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+  selected_gpus = _parse_visible_gpus(cuda_visible) if cuda_visible else []
+  world_size = int(
+    os.environ.get("WORLD_SIZE", os.environ.get("LOCAL_WORLD_SIZE", "1"))
+  )
+  num_gpus = int(os.environ.get("MJLAB_NUM_GPUS", len(selected_gpus)))
+
+  return {
+    "metadata_version": 1,
+    "task_id": task_id,
+    "task_id_source": "explicit",
+    "launcher": os.environ.get("MJLAB_LAUNCHER", "direct"),
+    "command": sys.argv,
+    "launcher_command": _optional_env("MJLAB_LAUNCHER_COMMAND"),
+    "log_dir": str(log_dir),
+    "created_at": datetime.now().isoformat(timespec="seconds"),
+    "cwd": os.getcwd(),
+    "python_executable": sys.executable,
+    "experiment_name": cfg.agent.experiment_name,
+    "run_name": cfg.agent.run_name,
+    "resume": cfg.agent.resume,
+    "load_run": cfg.agent.load_run,
+    "load_checkpoint": cfg.agent.load_checkpoint,
+    "num_envs": cfg.env.scene.num_envs,
+    "max_iterations": cfg.agent.max_iterations,
+    "clip_actions": cfg.agent.clip_actions,
+    "cuda_visible_devices": cuda_visible,
+    "selected_gpus": selected_gpus,
+    "num_gpus": num_gpus,
+    "world_size": world_size,
+    "device": device,
+    "launcher_visible_gpus": _optional_env("MJLAB_VISIBLE_GPUS"),
+    "launcher_num_envs": _optional_env("MJLAB_NUM_ENVS"),
+    "launcher_resume": _optional_env("MJLAB_RESUME"),
+  }
+
+
 def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
   cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
   if cuda_visible == "":
@@ -51,6 +104,12 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
     # Set EGL device to match the CUDA device.
     os.environ["MUJOCO_EGL_DEVICE_ID"] = str(local_rank)
     device = f"cuda:{local_rank}"
+    # Pin the default CUDA device for this rank *before* building the env. rsl_rl's runner
+    # only calls torch.cuda.set_device() during its own construction, which happens after
+    # ManagerBasedRlEnv is created -- so without this the env (sim, warp, CUDA graphs, and
+    # any non-explicitly-placed tensors) is built on cuda:0 for every rank, causing
+    # non-deterministic cross-device corruption under multi-GPU training.
+    torch.cuda.set_device(local_rank)
     # Set seed to have diversity in different processes.
     seed = cfg.agent.seed + local_rank
 
@@ -134,6 +193,10 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
   if rank == 0:
     dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
     dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
+    dump_yaml(
+      log_dir / "params" / "run.yaml",
+      _build_run_metadata(task_id, cfg, log_dir, device),
+    )
 
   runner.learn(
     num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
@@ -188,7 +251,7 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
       hostnames=["localhost"],
       workers_per_host=num_gpus,
       backend=None,  # Let rsl_rl handle process group initialization.
-      copy_env_vars=torchrunx.DEFAULT_ENV_VARS_FOR_COPY + ("MUJOCO*",),
+      copy_env_vars=torchrunx.DEFAULT_ENV_VARS_FOR_COPY + ("MUJOCO*", "MJLAB*"),
     ).run(run_train, task_id, args, log_dir)
 
 

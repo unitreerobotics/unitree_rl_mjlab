@@ -6,7 +6,15 @@ requires-python = ">=3.12"
 dependencies = [
     "mjlab==1.2.0",
     "mujoco-warp==3.5.0",
+    # rsl-rl-lib is also a transitive dependency of mjlab (pinned ==5.0.1). It is listed
+    # here explicitly so the [tool.uv.sources] override below replaces the PyPI build with
+    # our fork, which carries multi-GPU resume fixes. The fork branch is itself version
+    # 5.0.1, so mjlab's pin is still satisfied.
+    "rsl-rl-lib",
 ]
+
+[tool.uv.sources]
+rsl-rl-lib = { git = "https://github.com/curious-jp/rsl_rl.git", branch = "multigpu-resume-fix" }
 
 [build-system]
 requires = ["setuptools"]

@@ -1,1 +1,102 @@
-[{"name": "run_id", "source": "builtin", "kind": "builtin", "path": "run_id", "protected": true}, {"name": "max_iter", "source": "builtin", "kind": "builtin", "path": "max_iter", "protected": true}, {"name": "max_mean_reward", "source": "builtin", "kind": "builtin", "path": "max_mean_reward", "protected": true}, {"name": "num_envs", "source": "env", "kind": "value", "path": "scene.num_envs"}, {"name": "r:track_lin_vel", "source": "env", "kind": "value", "path": "rewards.track_linear_velocity.weight"}, {"name": "r:track_ang_vel", "source": "env", "kind": "value", "path": "rewards.track_angular_velocity.weight"}, {"name": "r:ang_momentum", "source": "env", "kind": "value", "path": "rewards.angular_momentum.weight"}, {"name": "r:is_terminated", "source": "env", "kind": "value", "path": "rewards.is_terminated.weight"}, {"name": "r:joint_acc_l2", "source": "env", "kind": "value", "path": "rewards.joint_acc_l2.weight"}, {"name": "r:joint_pos_limits", "source": "env", "kind": "value", "path": "rewards.joint_pos_limits.weight"}, {"name": "r:action_rate_l2", "source": "env", "kind": "value", "path": "rewards.action_rate_l2.weight"}, {"name": "r:foot_gait", "source": "env", "kind": "value", "path": "rewards.foot_gait.weight"}, {"name": "r:soft_landing", "source": "env", "kind": "value", "path": "rewards.soft_landing.weight"}, {"name": "o:actor", "source": "env", "kind": "exists", "path": "observations.actor"}, {"name": "o:critic", "source": "env", "kind": "exists", "path": "observations.critic"}]
+[
+  {
+    "name": "run_id",
+    "source": "builtin",
+    "kind": "builtin",
+    "path": "run_id",
+    "protected": true
+  },
+  {
+    "name": "task_id",
+    "source": "builtin",
+    "kind": "builtin",
+    "path": "task_id",
+    "protected": true
+  },
+  {
+    "name": "max_iter",
+    "source": "builtin",
+    "kind": "builtin",
+    "path": "max_iter",
+    "protected": true
+  },
+  {
+    "name": "max_mean_reward",
+    "source": "builtin",
+    "kind": "builtin",
+    "path": "max_mean_reward",
+    "protected": true
+  },
+  {
+    "name": "num_envs",
+    "source": "env",
+    "kind": "value",
+    "path": "scene.num_envs"
+  },
+  {
+    "name": "r:track_lin_vel",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.track_linear_velocity.weight"
+  },
+  {
+    "name": "r:track_ang_vel",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.track_angular_velocity.weight"
+  },
+  {
+    "name": "r:ang_momentum",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.angular_momentum.weight"
+  },
+  {
+    "name": "r:is_terminated",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.is_terminated.weight"
+  },
+  {
+    "name": "r:joint_acc_l2",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.joint_acc_l2.weight"
+  },
+  {
+    "name": "r:joint_pos_limits",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.joint_pos_limits.weight"
+  },
+  {
+    "name": "r:action_rate_l2",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.action_rate_l2.weight"
+  },
+  {
+    "name": "r:foot_gait",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.foot_gait.weight"
+  },
+  {
+    "name": "r:soft_landing",
+    "source": "env",
+    "kind": "value",
+    "path": "rewards.soft_landing.weight"
+  },
+  {
+    "name": "o:actor",
+    "source": "env",
+    "kind": "exists",
+    "path": "observations.actor"
+  },
+  {
+    "name": "o:critic",
+    "source": "env",
+    "kind": "exists",
+    "path": "observations.critic"
+  }
+]

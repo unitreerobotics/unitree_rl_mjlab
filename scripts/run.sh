@@ -2,25 +2,31 @@
 # Runner script: launch multi-GPU mjlab training inside a tmux session.
 #
 # Usage:
-#   ./run.sh <task> [--num_gpus N] [--num_envs N] [--resume EXPERIMENT/LOAD_RUN] [-- EXTRA_ARGS...]
+#   ./scripts/run.sh <task> [--num_gpus N] [--gpus IDS] [--num_envs N] [--resume EXPERIMENT/LOAD_RUN] [-- EXTRA_ARGS...]
 #
 # Examples:
-#   ./run.sh Unitree-Go2-Flat                    # 4-GPU, default task, 4096 envs
-#   ./run.sh Unitree-Go2-Flat --num_gpus 2       # 2-GPU run
-#   ./run.sh Unitree-Go2-Flat --num_gpus 1       # single-GPU
-#   ./run.sh Unitree-Go2-Flat --num_envs 8192    # override parallel env count
-#   ./run.sh go2_velocity --resume logs/rsl_rl/go2_velocity/2026-04-22_18-54-05
-#   ./run.sh Unitree-Go2-Flat -- --env.scene.dt=0.02  # pass extra flags after --
+#   ./scripts/run.sh Unitree-Go2-Flat                    # 4-GPU, default task, 4096 envs
+#   ./scripts/run.sh Unitree-Go2-Flat --num_gpus 2       # 2-GPU run (uses GPUs 0,1)
+#   ./scripts/run.sh Unitree-Go2-Flat --num_gpus 1       # single-GPU
+#   ./scripts/run.sh Unitree-Go2-Flat --gpus 2,3         # pick exact GPUs 2 and 3
+#   ./scripts/run.sh Unitree-Go2-Flat --gpus 1           # single run on GPU 1
+#   ./scripts/run.sh Unitree-Go2-Flat --num_envs 8192    # override parallel env count
+#   ./scripts/run.sh go2_velocity --resume logs/rsl_rl/go2_velocity/2026-04-22_18-54-05
+#   ./scripts/run.sh Unitree-Go2-Flat -- --env.scene.dt=0.02  # pass extra flags after --
 
 set -euo pipefail
+
+printf -v MJLAB_ORIGINAL_LAUNCHER_COMMAND '%q ' "$0" "$@"
+MJLAB_ORIGINAL_LAUNCHER_COMMAND="${MJLAB_ORIGINAL_LAUNCHER_COMMAND% }"
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-if [[ -x "${SCRIPT_DIR}/.venv/bin/python" ]]; then
-    PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+if [[ -x "${PROJECT_ROOT}/.venv/bin/python" ]]; then
+    PYTHON_BIN="${PROJECT_ROOT}/.venv/bin/python"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN="$(command -v python3)"
 else
@@ -28,7 +34,7 @@ else
     exit 1
 fi
 
-TRAIN_SCRIPT="${SCRIPT_DIR}/scripts/train.py"
+TRAIN_SCRIPT="${SCRIPT_DIR}/train.py"
 
 if [[ ! -f "${TRAIN_SCRIPT}" ]]; then
     echo "[ERROR] Train script not found at ${TRAIN_SCRIPT}" >&2
@@ -39,12 +45,13 @@ fi
 # Argument parsing
 # ---------------------------------------------------------------------------
 NUM_GPUS=4
+GPU_IDS=""
 NUM_ENVS=4096
 TASK=""
 RESUME=""
 EXTRA_ARGS=()
 
-USAGE="Usage: $0 <task> [--num_gpus N] [--num_envs N] [--resume EXPERIMENT/LOAD_RUN] [-- EXTRA_ARGS...]"
+USAGE="Usage: $0 <task> [--num_gpus N] [--gpus IDS] [--num_envs N] [--resume EXPERIMENT/LOAD_RUN] [-- EXTRA_ARGS...]"
 
 if [[ $# -lt 1 ]]; then
     echo "[ERROR] Task name is required." >&2
@@ -58,6 +65,7 @@ shift
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --num_gpus)   NUM_GPUS="$2";   shift 2 ;;
+        --gpus)       GPU_IDS="$2";    shift 2 ;;
         --num_envs)   NUM_ENVS="$2";   shift 2 ;;
         --resume)     RESUME="$2";     shift 2 ;;
         --)           shift; EXTRA_ARGS+=("$@"); break ;;
@@ -69,11 +77,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if ! [[ "${NUM_GPUS}" =~ ^[1-9][0-9]*$ ]]; then
-    echo "[ERROR] --num_gpus must be a positive integer: ${NUM_GPUS}" >&2
-    exit 1
-fi
-
 if ! [[ "${NUM_ENVS}" =~ ^[1-9][0-9]*$ ]]; then
     echo "[ERROR] --num_envs must be a positive integer: ${NUM_ENVS}" >&2
     exit 1
@@ -84,14 +87,43 @@ fi
 # and `--gpu-ids 0 1 2 3` is parsed as one value plus three unknown positionals.
 # Workaround: set CUDA_VISIBLE_DEVICES and pass `--gpu-ids all` for multi-GPU;
 # for single-GPU we rely on train.py's default gpu_ids=[0].
-GPU_ENV=()
-USE_ALL_GPUS=false
-if [[ "${NUM_GPUS}" -gt 1 ]]; then
+#
+# --gpus picks the exact physical GPU IDs to expose (e.g. "2,3"); --num_gpus
+# just exposes the first N (0..N-1). --gpus takes precedence when both are set.
+if [[ -n "${GPU_IDS}" ]]; then
+    # Normalize: strip spaces, validate comma-separated non-negative integers.
+    VISIBLE="${GPU_IDS// /}"
+    if ! [[ "${VISIBLE}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+        echo "[ERROR] --gpus must be a comma-separated list of GPU IDs: ${GPU_IDS}" >&2
+        exit 1
+    fi
+    NUM_GPUS=$(awk -F, '{print NF}' <<<"${VISIBLE}")
+else
+    if ! [[ "${NUM_GPUS}" =~ ^[1-9][0-9]*$ ]]; then
+        echo "[ERROR] --num_gpus must be a positive integer: ${NUM_GPUS}" >&2
+        exit 1
+    fi
     VISIBLE=""
     for ((i=0; i<NUM_GPUS; i++)); do
         VISIBLE+="${VISIBLE:+,}$i"
     done
-    GPU_ENV=("CUDA_VISIBLE_DEVICES=${VISIBLE}")
+fi
+
+GPU_ENV=()
+USE_ALL_GPUS=false
+# Always pin CUDA_VISIBLE_DEVICES so the selected GPUs are honored, even for a
+# single explicitly-chosen GPU. train.py's default gpu_ids=[0] then refers to
+# the first visible device.
+GPU_ENV=(
+    "CUDA_VISIBLE_DEVICES=${VISIBLE}"
+    "MJLAB_LAUNCHER=scripts/run.sh"
+    "MJLAB_LAUNCHER_COMMAND=${MJLAB_ORIGINAL_LAUNCHER_COMMAND}"
+    "MJLAB_VISIBLE_GPUS=${VISIBLE}"
+    "MJLAB_NUM_GPUS=${NUM_GPUS}"
+    "MJLAB_NUM_ENVS=${NUM_ENVS}"
+    "MJLAB_RESUME=${RESUME}"
+)
+if [[ "${NUM_GPUS}" -gt 1 ]]; then
     USE_ALL_GPUS=true
 fi
 
@@ -114,14 +146,19 @@ if [[ -n "${RESUME}" ]]; then
     TRAIN_CMD+=("--agent.resume" "True")
     # Extract experiment_name and load_run from the resume path.
     # Expected format: logs/rsl_rl/<experiment>/<run_id> or just <experiment>/<run_id>
-    RESUME_PATH="${SCRIPT_DIR}/${RESUME}"
+    if [[ "${RESUME}" == /* ]]; then
+        RESUME_PATH="${RESUME}"
+    else
+        RESUME_PATH="${PROJECT_ROOT}/${RESUME}"
+    fi
     if [[ ! -d "${RESUME_PATH}" ]]; then
         echo "[ERROR] Resume directory not found: ${RESUME_PATH}" >&2
         exit 1
     fi
-    # Extract experiment name (first component after logs/rsl_rl/)
-    EXPERIMENT_NAME="$(echo "${RESUME}" | sed 's|^logs/rsl_rl/||' | cut -d'/' -f1)"
-    LOAD_RUN="$(echo "${RESUME}" | sed 's|^logs/rsl_rl/[^/]*/||')"
+    # Extract experiment name and run id after logs/rsl_rl/ when present.
+    RESUME_REL="$(echo "${RESUME}" | sed "s|.*/logs/rsl_rl/||")"
+    EXPERIMENT_NAME="$(echo "${RESUME_REL}" | cut -d"/" -f1)"
+    LOAD_RUN="$(echo "${RESUME_REL}" | sed "s|^[^/]*/||")"
     TRAIN_CMD+=("--agent.experiment-name" "${EXPERIMENT_NAME}")
     TRAIN_CMD+=("--agent.load-run" "${LOAD_RUN}")
 fi
@@ -134,7 +171,7 @@ TRAIN_CMD+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
 TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 SESSION="mjlab_train_${TIMESTAMP}_${NUM_GPUS}gpu"
 
-TRAIN_LOG="${SCRIPT_DIR}/logs/train_${TIMESTAMP}_${NUM_GPUS}gpu.log"
+TRAIN_LOG="${PROJECT_ROOT}/logs/train_${TIMESTAMP}_${NUM_GPUS}gpu.log"
 
 printf -v QUOTED_TRAIN_CMD '%q ' "${TRAIN_CMD[@]}"
 
@@ -163,14 +200,14 @@ BEGIN { out = target; n = split(target, parts, "/"); base = parts[n] }
 AWK
 
 printf -v QUOTED_AWK '%q' "${AWK_FILTER}"
-FULL_CMD="cd '${SCRIPT_DIR}' && ${QUOTED_TRAIN_CMD} 2>&1 | awk -v target='${TRAIN_LOG}' -v script_dir='${SCRIPT_DIR}' ${QUOTED_AWK}"
+FULL_CMD="cd '${PROJECT_ROOT}' && ${QUOTED_TRAIN_CMD} 2>&1 | awk -v target='${TRAIN_LOG}' -v script_dir='${PROJECT_ROOT}' ${QUOTED_AWK}"
 
 echo "[INFO] Starting training in tmux session: ${SESSION}"
 echo "[INFO] Python       : ${PYTHON_BIN}"
 if [[ "${USE_ALL_GPUS}" == "true" ]]; then
-    echo "[INFO] GPUs         : ${NUM_GPUS} (${GPU_ENV[*]} --gpu-ids all)"
+    echo "[INFO] GPUs         : ${NUM_GPUS} (CUDA_VISIBLE_DEVICES=${VISIBLE} --gpu-ids all)"
 else
-    echo "[INFO] GPUs         : ${NUM_GPUS} (train.py default gpu_ids=[0])"
+    echo "[INFO] GPUs         : ${NUM_GPUS} (CUDA_VISIBLE_DEVICES=${VISIBLE}, train.py default gpu_ids=[0])"
 fi
 echo "[INFO] Num envs     : ${NUM_ENVS}"
 echo "[INFO] Task         : ${TASK}"
@@ -189,7 +226,7 @@ echo "         tmux attach -t ${SESSION}"
 LOG_BASENAME="$(basename "${TRAIN_LOG}")"
 RESOLVED_LOG=""
 for _ in $(seq 1 60); do
-    RESOLVED_LOG="$(find "${SCRIPT_DIR}/logs/rsl_rl" -name "${LOG_BASENAME}" 2>/dev/null | head -1)"
+    RESOLVED_LOG="$(find "${PROJECT_ROOT}/logs/rsl_rl" -name "${LOG_BASENAME}" 2>/dev/null | head -1)"
     [[ -n "${RESOLVED_LOG}" ]] && break
     sleep 1
 done

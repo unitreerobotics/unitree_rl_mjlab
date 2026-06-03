@@ -23,8 +23,11 @@ class Run:
     path: Path
     agent: dict[str, Any] = field(default_factory=dict)
     env: dict[str, Any] = field(default_factory=dict)
+    run: dict[str, Any] = field(default_factory=dict)
+    task_id: str | None = None
     git_diff: str = ""
     max_iter: int | None = None
+    checkpoints: list[Path] = field(default_factory=list)
     tfevents: Path | None = None
     max_mean_reward: float | None = None
 
@@ -32,20 +35,30 @@ class Run:
 def _load_yaml(p: Path) -> dict[str, Any]:
     if not p.is_file():
         return {}
-    with p.open("r") as f:
-        # Isaac Lab dumps `!!python/tuple` etc. — unsafe_load is required.
-        # Source is our own training logs, not untrusted input.
-        data = yaml.unsafe_load(f)
+    try:
+        with p.open("r") as f:
+            # Isaac Lab dumps `!!python/tuple` etc. — unsafe_load is required.
+            # Source is our own training logs, not untrusted input.
+            data = yaml.unsafe_load(f)
+    except Exception:
+        # Older logs may reference Python classes that moved or no longer exist.
+        return {}
     return data if isinstance(data, dict) else {}
 
 
-def _max_model_iter(run_dir: Path) -> int | None:
-    best = -1
+def _checkpoints(run_dir: Path) -> list[Path]:
+    found: list[tuple[int, Path]] = []
     for entry in run_dir.iterdir():
         m = _MODEL_ITER_RE.match(entry.name)
         if m:
-            best = max(best, int(m.group(1)))
-    return best if best >= 0 else None
+            found.append((int(m.group(1)), entry))
+    found.sort(key=lambda item: item[0])
+    return [path for _, path in found]
+
+
+def checkpoint_iter(path: Path) -> int | None:
+    match = _MODEL_ITER_RE.match(path.name)
+    return int(match.group(1)) if match else None
 
 
 def _find_tfevents(run_dir: Path) -> Path | None:
@@ -131,14 +144,23 @@ def _load_run(
     git_diff = git_diff_path.read_text(errors="replace") if git_diff_path.is_file() else ""
 
     tfevents = _find_tfevents(run_dir)
+    checkpoints = _checkpoints(run_dir)
+    max_iter = checkpoint_iter(checkpoints[-1]) if checkpoints else None
+    run_meta = _load_yaml(run_dir / "params" / "run.yaml")
+    task_id = run_meta.get("task_id")
+    if not isinstance(task_id, str):
+        task_id = None
     return Run(
         run_id=run_dir.name,
         experiment=experiment,
         path=run_dir,
         agent=_load_yaml(run_dir / "params" / "agent.yaml"),
         env=_load_yaml(run_dir / "params" / "env.yaml"),
+        run=run_meta,
+        task_id=task_id,
         git_diff=git_diff,
-        max_iter=_max_model_iter(run_dir),
+        max_iter=max_iter,
+        checkpoints=checkpoints,
         tfevents=tfevents,
         max_mean_reward=_max_mean_reward(tfevents, tb_cache),
     )

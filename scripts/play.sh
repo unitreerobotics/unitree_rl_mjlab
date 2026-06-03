@@ -2,14 +2,15 @@
 # Runner script: launch mjlab policy playback.
 #
 # Usage:
-#   ./play.sh <task> [--checkpoint PATH] [--video] [--video-length N]
+#   ./scripts/play.sh <task> [--checkpoint PATH] [--video] [--video-attribution] [--video-length N]
 #                    [--video-width W] [--video-height H] [-- EXTRA_ARGS...]
 #
 # Examples:
-#   ./play.sh Unitree-Go2-Flat
-#   ./play.sh go2_velocity --checkpoint logs/.../model_1500.pt
-#   ./play.sh Unitree-Go2-Flat --video                  # record default-length clip
-#   ./play.sh Unitree-Go2-Flat --video --video-length 400
+#   ./scripts/play.sh Unitree-Go2-Flat
+#   ./scripts/play.sh go2_velocity --checkpoint logs/.../model_1500.pt
+#   ./scripts/play.sh Unitree-Go2-Flat --video                  # record default-length clip
+#   ./scripts/play.sh Unitree-Go2-Flat --video --video-length 400
+#   ./scripts/play.sh Unitree-Go2-Flat --video-attribution     # side-by-side attribution clip
 #
 # When --video is set, a short MP4 is saved under
 #   <checkpoint_dir>/videos/play/rl-video-step-0.mp4
@@ -18,9 +19,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-if [[ -x "${SCRIPT_DIR}/.venv/bin/python" ]]; then
-    PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+if [[ -x "${PROJECT_ROOT}/.venv/bin/python" ]]; then
+    PYTHON_BIN="${PROJECT_ROOT}/.venv/bin/python"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN="$(command -v python3)"
 else
@@ -28,7 +30,7 @@ else
     exit 1
 fi
 
-PLAY_SCRIPT="${SCRIPT_DIR}/scripts/play.py"
+PLAY_SCRIPT="${SCRIPT_DIR}/play.py"
 
 if [[ ! -f "${PLAY_SCRIPT}" ]]; then
     echo "[ERROR] Play script not found at ${PLAY_SCRIPT}" >&2
@@ -41,6 +43,7 @@ fi
 TASK=""
 CHECKPOINT=""
 VIDEO=false
+VIDEO_ATTRIBUTION=false
 VIDEO_LENGTH=""
 VIDEO_WIDTH=""
 VIDEO_HEIGHT=""
@@ -48,7 +51,7 @@ EXTRA_ARGS=()
 
 if [[ $# -lt 1 ]]; then
     echo "[ERROR] Task name is required." >&2
-    echo "Usage: $0 <task> [--checkpoint PATH] [--video] [--video-length N] [-- EXTRA_ARGS...]" >&2
+    echo "Usage: $0 <task> [--checkpoint PATH] [--video] [--video-attribution] [--video-length N] [-- EXTRA_ARGS...]" >&2
     exit 1
 fi
 
@@ -63,6 +66,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --video)
             VIDEO=true
+            shift
+            ;;
+        --video-attribution)
+            VIDEO=true
+            VIDEO_ATTRIBUTION=true
             shift
             ;;
         --video-length)
@@ -90,13 +98,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${CHECKPOINT}" ]]; then
-    CHECKPOINT="$(find "${SCRIPT_DIR}/logs/rsl_rl" -type f -name 'model_*.pt' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n1 | cut -d' ' -f2-)"
+    CHECKPOINT="$(find "${PROJECT_ROOT}/logs/rsl_rl" -type f -name 'model_*.pt' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n1 | cut -d' ' -f2-)"
 fi
 
 if [[ -z "${CHECKPOINT}" ]]; then
-    echo "[ERROR] No checkpoint found under ${SCRIPT_DIR}/logs/rsl_rl." >&2
+    echo "[ERROR] No checkpoint found under ${PROJECT_ROOT}/logs/rsl_rl." >&2
     echo "        Provide one explicitly with --checkpoint PATH." >&2
     exit 1
+fi
+
+if [[ -n "${CHECKPOINT}" && "${CHECKPOINT}" != /* && ! -f "${CHECKPOINT}" && -f "${PROJECT_ROOT}/${CHECKPOINT}" ]]; then
+    CHECKPOINT="${PROJECT_ROOT}/${CHECKPOINT}"
 fi
 
 if [[ ! -f "${CHECKPOINT}" ]]; then
@@ -114,6 +126,7 @@ CMD=(
 
 if [[ "${VIDEO}" == "true" ]]; then
     CMD+=("--video" "True")
+    [[ "${VIDEO_ATTRIBUTION}" == "true" ]] && CMD+=("--video-attribution" "True")
     [[ -n "${VIDEO_LENGTH}" ]] && CMD+=("--video-length=${VIDEO_LENGTH}")
     [[ -n "${VIDEO_WIDTH}"  ]] && CMD+=("--video-width=${VIDEO_WIDTH}")
     [[ -n "${VIDEO_HEIGHT}" ]] && CMD+=("--video-height=${VIDEO_HEIGHT}")
@@ -159,6 +172,7 @@ echo "[INFO] Task        : ${TASK}"
 echo "[INFO] Checkpoint  : ${CHECKPOINT}"
 if [[ "${VIDEO}" == "true" ]]; then
     echo "[INFO] Video dir   : ${VIDEO_DIR}"
+    [[ "${VIDEO_ATTRIBUTION}" == "true" ]] && echo "[INFO] Video mode  : attribution side-by-side"
     [[ -n "${VIDEO_LENGTH}" ]] && echo "[INFO] Video length: ${VIDEO_LENGTH} frames"
 fi
 echo "[INFO] Command     : ${CMD[*]}"

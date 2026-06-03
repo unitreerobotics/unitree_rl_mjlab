@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
+import mjlab
 import torch
 import tyro
 
@@ -17,6 +18,7 @@ from mjlab.utils.os import get_wandb_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wrappers import VideoRecorder
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
+from src.viz import AttributionVideoRecorder, AttributionViserPlayViewer
 
 
 @dataclass(frozen=True)
@@ -27,16 +29,47 @@ class PlayConfig:
   num_envs: int | None = None
   device: str | None = None
   video: bool = False
+  video_attribution: bool = False
+  """Record a side-by-side playback video with action attribution."""
   video_length: int = 200
   video_height: int | None = None
   video_width: int | None = None
   camera: int | str | None = None
   viewer: Literal["auto", "native", "viser"] = "auto"
+  attribution: bool = False
+  """Enable live observation attribution in the viser viewer."""
+  attribution_method: Literal[
+    "integrated_gradients",
+    "gradient_saliency",
+    "gradient_input",
+    "deep_lift_rescale",
+    "deep_shap",
+  ] = "integrated_gradients"
+  """Initial attribution method for the viser attribution panel."""
   no_terminations: bool = False
   """Disable all termination conditions (useful for viewing motions with dummy agents)."""
 
   # Internal flag used by demo script.
   _demo_mode: tyro.conf.Suppress[bool] = False
+
+
+def _expand_bool_shorthand(args: list[str], flag_name: str) -> list[str]:
+  """Allow ``--flag`` shorthand while project tyro config uses FlagConversionOff."""
+  expanded: list[str] = []
+  index = 0
+  no_flag_name = "--no-" + flag_name[2:]
+  while index < len(args):
+    arg = args[index]
+    if arg == flag_name:
+      expanded.append(arg)
+      if index + 1 >= len(args) or args[index + 1].startswith("--"):
+        expanded.append("True")
+    elif arg == no_flag_name:
+      expanded.extend([flag_name, "False"])
+    else:
+      expanded.append(arg)
+    index += 1
+  return expanded
 
 
 def run_play(task_id: str, cfg: PlayConfig):
@@ -114,23 +147,30 @@ def run_play(task_id: str, cfg: PlayConfig):
   if cfg.video_width is not None:
     env_cfg.viewer.width = cfg.video_width
 
-  render_mode = "rgb_array" if (TRAINED_MODE and cfg.video) else None
-  if cfg.video and DUMMY_MODE:
+  record_video = cfg.video or cfg.video_attribution
+  render_mode = "rgb_array" if (TRAINED_MODE and record_video) else None
+  if record_video and DUMMY_MODE:
     print(
       "[WARN] Video recording with dummy agents is disabled (no checkpoint/log_dir)."
     )
   env = ManagerBasedRlEnv(cfg=env_cfg, device=device, render_mode=render_mode)
 
-  if TRAINED_MODE and cfg.video:
-    print("[INFO] Recording videos during play")
+  video_recorder: VideoRecorder | AttributionVideoRecorder | None = None
+  if TRAINED_MODE and record_video:
+    message = "Recording attribution video during play"
+    if not cfg.video_attribution:
+      message = "Recording videos during play"
+    print(f"[INFO] {message}")
     assert log_dir is not None  # log_dir is set in TRAINED_MODE block
-    env = VideoRecorder(
+    recorder_cls = AttributionVideoRecorder if cfg.video_attribution else VideoRecorder
+    video_recorder = recorder_cls(
       env,
       video_folder=log_dir / "videos" / "play",
       step_trigger=lambda step: step == 0,
       video_length=cfg.video_length,
       disable_logger=True,
     )
+    env = video_recorder
 
   env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
   if DUMMY_MODE:
@@ -157,7 +197,25 @@ def run_play(task_id: str, cfg: PlayConfig):
     runner.load(
       str(resume_path), load_cfg={"actor": True}, strict=True, map_location=device
     )
+    critic = None
+    if cfg.attribution:
+      try:
+        runner.load(
+          str(resume_path),
+          load_cfg={"critic": True},
+          strict=True,
+          map_location=device,
+        )
+        critic = runner.alg.critic
+      except (KeyError, RuntimeError) as exc:
+        print(f"[WARN] Critic could not be loaded; value attribution disabled: {exc}")
     policy = runner.get_inference_policy(device=device)
+    actor = runner.alg.actor
+    if isinstance(video_recorder, AttributionVideoRecorder):
+      video_recorder.configure_attribution(
+        actor=actor,
+        attribution_method=cfg.attribution_method,
+      )
 
   # Handle "auto" viewer selection.
   if cfg.viewer == "auto":
@@ -166,11 +224,27 @@ def run_play(task_id: str, cfg: PlayConfig):
     del has_display
   else:
     resolved_viewer = cfg.viewer
+  if cfg.attribution and cfg.viewer == "auto":
+    resolved_viewer = "viser"
 
   if resolved_viewer == "native":
+    if cfg.attribution:
+      print("[WARN] Attribution visualizer is only available with --viewer viser.")
     NativeMujocoViewer(env, policy).run()
   elif resolved_viewer == "viser":
-    ViserPlayViewer(env, policy).run()
+    if cfg.attribution and TRAINED_MODE:
+      AttributionViserPlayViewer(
+        env,
+        policy,
+        actor=actor,
+        critic=critic,
+        attribution_method=cfg.attribution_method,
+      ).run()
+    elif cfg.attribution:
+      print("[WARN] Attribution visualizer requires --agent trained.")
+      ViserPlayViewer(env, policy).run()
+    else:
+      ViserPlayViewer(env, policy).run()
   else:
     raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
 
@@ -196,7 +270,10 @@ def main():
 
   args = tyro.cli(
     PlayConfig,
-    args=remaining_args,
+    args=_expand_bool_shorthand(
+      _expand_bool_shorthand(remaining_args, "--attribution"),
+      "--video-attribution",
+    ),
     default=PlayConfig(),
     prog=sys.argv[0] + f" {chosen_task}",
     config=mjlab.TYRO_FLAGS,

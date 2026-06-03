@@ -5,7 +5,7 @@ A column is a plain dict:
     {"name": str, "source": str, "kind": str, "path": str}
     {"name": str, "source": "git_diff", "kind": "regex", "pattern": str}
 
-Valid ``source`` values: ``env``, ``agent``, ``git_diff``, ``builtin``.
+Valid ``source`` values: ``env``, ``agent``, ``run``, ``git_diff``, ``builtin``.
 Valid ``kind`` values: ``exists``, ``value``, ``regex``, ``builtin``.
 """
 
@@ -19,10 +19,10 @@ from typing import Any
 from diff import dot_get, dot_has
 
 
-SOURCES = ("env", "agent", "git_diff", "builtin")
+SOURCES = ("env", "agent", "run", "git_diff", "builtin")
 KINDS = ("exists", "value", "regex", "builtin")
 
-BUILTIN_FIELDS = ("run_id", "experiment", "max_iter", "max_mean_reward")
+BUILTIN_FIELDS = ("run_id", "experiment", "task_id", "max_iter", "max_mean_reward")
 
 
 def discover_group_keys(
@@ -86,6 +86,7 @@ def expand_group(
 def default_columns() -> list[dict[str, Any]]:
     return [
         {"name": "run_id",          "source": "builtin", "kind": "builtin", "path": "run_id", "protected": True},
+        {"name": "task_id",         "source": "builtin", "kind": "builtin", "path": "task_id", "protected": True},
         {"name": "max_iter",        "source": "builtin", "kind": "builtin", "path": "max_iter", "protected": True},
         {"name": "max_mean_reward", "source": "builtin", "kind": "builtin", "path": "max_mean_reward", "protected": True},
         {"name": "num_envs",        "source": "env",     "kind": "value",   "path": "scene.num_envs"},
@@ -111,6 +112,8 @@ def extract(run: Any, col: dict[str, Any]) -> Any:
         root = run.env
     elif source == "agent":
         root = run.agent
+    elif source == "run":
+        root = run.run
     elif source == "git_diff":
         root = run.git_diff
     else:

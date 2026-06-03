@@ -38,11 +38,11 @@ Train a velocity tracking policy:
 python scripts/train.py Unitree-Go2-Flat --env.scene.num-envs=4096
 ```
 
-Multi-GPU training with `run.sh`:
+Multi-GPU training with `scripts/run.sh`:
 
 ```bash
-./run.sh Unitree-Go2-Flat --num_gpus 2
-./run.sh Unitree-Go2-Flat --num_gpus 1
+./scripts/run.sh Unitree-Go2-Flat --num_gpus 2
+./scripts/run.sh Unitree-Go2-Flat --num_gpus 1
 ```
 
 ### Resume Training
@@ -50,7 +50,7 @@ Multi-GPU training with `run.sh`:
 Resume from a previous run using the experiment/run directory:
 
 ```bash
-./run.sh Unitree-Go2-Flat --resume logs/rsl_rl/go2_velocity/2026-04-22_18-54-05
+./scripts/run.sh Unitree-Go2-Flat --resume logs/rsl_rl/go2_velocity/2026-04-22_18-54-05
 ```
 
 ### Parameters
@@ -78,14 +78,15 @@ python scripts/play.py Unitree-Go2-Flat --checkpoint_file=logs/rsl_rl/go2_veloci
 
 ### Video Recording
 
-Record playback as MP4 using `play.sh`:
+Record playback as MP4 using `scripts/play.sh`:
 
 ```bash
-./play.sh Unitree-Go2-Flat --checkpoint <path> --video
-./play.sh Unitree-Go2-Flat --checkpoint <path> --video --video-length 400 --video-width 800 --video-height 600
+./scripts/play.sh Unitree-Go2-Flat --checkpoint <path> --video
+./scripts/play.sh Unitree-Go2-Flat --checkpoint <path> --video --video-length 400 --video-width 800 --video-height 600
+./scripts/play.sh Unitree-Go2-Flat --checkpoint <path> --video-attribution --attribution-method gradient_saliency
 ```
 
-Videos are saved under `<checkpoint_dir>/videos/play/rl-video-step-0.mp4`. On headless machines, `MUJOCO_GL=egl` is set automatically.
+Videos are saved under `<checkpoint_dir>/videos/play/rl-video-step-0.mp4`. Attribution videos are saved as `<checkpoint_dir>/videos/play/rl-video-attribution-step-0.mp4`. On headless machines, `MUJOCO_GL=egl` is set automatically.
 
 ### Visualization Results
 
@@ -143,16 +144,18 @@ cd deploy/robots/go2/build
 Browse and compare rsl_rl training runs with a Streamlit app:
 
 ```bash
-pip install streamlit pyyaml
+pip install streamlit pyyaml tensorboard
 streamlit run tools/train_log_manager/app.py -- --logs-root logs/rsl_rl
 ```
 
 Open http://localhost:8501 (port-forward if running over SSH).
 
 Features:
-- **Sortable table** — one row per training run with user-defined columns from `agent.yaml`, `env.yaml`, and git diffs.
+- **Sortable table** — one row per training run with `task_id` from `run.yaml` plus user-defined columns from `agent.yaml`, `env.yaml`, and git diffs.
+- **Play selected checkpoint** — select a run, choose a Go2 environment/checkpoint, and launch `scripts/play.py --viewer viser` in the background with an `Open Viser` link.
+- **TensorBoard view** — auto-start TensorBoard for `logs/rsl_rl` and open the selected run filter.
 - **Column management** — add, rename, remove columns dynamically; peek values before committing.
-- **YAML / Git diff comparison** — pick two runs to compare their configs and code changes side by side.
+- **YAML / Git diff comparison** — select two table rows to compare their configs and code changes side by side.
 - **URL persistence** — column configuration is encoded in the URL for easy sharing.
 
 See [tools/train_log_manager/README.md](tools/train_log_manager/README.md) for details.
