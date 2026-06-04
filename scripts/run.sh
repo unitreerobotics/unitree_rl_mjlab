@@ -109,6 +109,27 @@ else
     done
 fi
 
+if command -v nvidia-smi >/dev/null 2>&1; then
+    GPU_COUNT="$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"
+    GPU_COUNT="${GPU_COUNT//[[:space:]]/}"
+    if [[ -n "${GPU_COUNT}" && "${GPU_COUNT}" =~ ^[0-9]+$ && "${GPU_COUNT}" -gt 0 ]]; then
+        declare -A SEEN_GPU_IDS=()
+        IFS="," read -r -a REQUESTED_GPU_IDS <<<"${VISIBLE}"
+        for gpu_id in "${REQUESTED_GPU_IDS[@]}"; do
+            if (( gpu_id >= GPU_COUNT )); then
+                echo "[ERROR] Requested GPU ${gpu_id}, but this host only exposes GPU IDs 0..$((GPU_COUNT - 1))." >&2
+                echo "[ERROR] Use --gpus with valid physical GPU IDs, e.g. --gpus 2,3 for the last two GPUs on this host." >&2
+                exit 1
+            fi
+            if [[ -n "${SEEN_GPU_IDS[${gpu_id}]:-}" ]]; then
+                echo "[ERROR] Duplicate GPU ID requested: ${gpu_id}" >&2
+                exit 1
+            fi
+            SEEN_GPU_IDS["${gpu_id}"]=1
+        done
+    fi
+fi
+
 GPU_ENV=()
 USE_ALL_GPUS=false
 # Always pin CUDA_VISIBLE_DEVICES so the selected GPUs are honored, even for a
@@ -171,7 +192,27 @@ TRAIN_CMD+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
 TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 SESSION="mjlab_train_${TIMESTAMP}_${NUM_GPUS}gpu"
 
-TRAIN_LOG="${PROJECT_ROOT}/logs/train_${TIMESTAMP}_${NUM_GPUS}gpu.log"
+SAFE_TASK="$(printf '%s' "${TASK}" | tr -c 'A-Za-z0-9_.-' '_')"
+LAUNCHER_LOG_DIR="${PROJECT_ROOT}/logs/launcher/${SAFE_TASK}"
+mkdir -p "${LAUNCHER_LOG_DIR}"
+TRAIN_LOG="${LAUNCHER_LOG_DIR}/train_${TIMESTAMP}_${NUM_GPUS}gpu.log"
+
+# Fail fast in the caller shell if the Python environment cannot import the
+# simulation stack. Without this, tmux exits immediately and only leaves a
+# fallback log behind.
+"${PYTHON_BIN}" - "${TASK}" <<'PY'
+import sys
+
+import mujoco  # noqa: F401
+import mujoco_warp  # noqa: F401
+import mjlab.tasks  # noqa: F401
+import src.tasks  # noqa: F401
+from mjlab.tasks.registry import list_tasks
+
+task = sys.argv[1]
+if task not in list_tasks():
+    raise SystemExit(f"Task not registered: {task}")
+PY
 
 printf -v QUOTED_TRAIN_CMD '%q ' "${TRAIN_CMD[@]}"
 
@@ -236,5 +277,5 @@ if [[ -n "${RESOLVED_LOG}" ]]; then
     echo "         tail -F ${RESOLVED_LOG}"
 else
     echo "         tail -F ${TRAIN_LOG}"
-    echo "         (run dir not announced yet; tail will keep retrying)"
+    echo "         (fallback launcher log; if training starts successfully it will move into logs/rsl_rl/<experiment>/<run>/)"
 fi

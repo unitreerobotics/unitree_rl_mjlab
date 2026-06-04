@@ -21,10 +21,6 @@ def _time(env: ManagerBasedRlEnv) -> torch.Tensor:
   return env.episode_length_buf * env.step_dt
 
 
-def _phase(env: ManagerBasedRlEnv, duration_s: float) -> torch.Tensor:
-  return torch.clamp(_time(env) / duration_s, 0.0, 1.0)
-
-
 def _window(env: ManagerBasedRlEnv, start_s: float, end_s: float) -> torch.Tensor:
   t = _time(env)
   return ((t >= start_s) & (t <= end_s)).float()
@@ -48,43 +44,33 @@ def _site_pos_b(asset: Entity, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   ).reshape_as(rel_pos_w)
 
 
-def _relative_base_height(
-  env: ManagerBasedRlEnv,
-  asset: Entity,
-) -> torch.Tensor:
+def _relative_base_height(env: ManagerBasedRlEnv, asset: Entity) -> torch.Tensor:
   return asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
 
 
-def _progress_gravity_target(progress: torch.Tensor) -> torch.Tensor:
+def _side_roll_rate(asset: Entity, direction: float) -> torch.Tensor:
+  sign = 1.0 if direction >= 0.0 else -1.0
+  return torch.clamp(sign * asset.data.root_link_ang_vel_b[:, 0], min=0.0)
+
+
+def _progress_gravity_target(
+  progress: torch.Tensor,
+  direction: float,
+) -> torch.Tensor:
+  sign = 1.0 if direction >= 0.0 else -1.0
   target_angle = torch.clamp(progress, 0.0, 1.0) * (2.0 * math.pi)
   return torch.stack(
     (
-      -torch.sin(target_angle),
       torch.zeros_like(target_angle),
+      -sign * torch.sin(target_angle),
       -torch.cos(target_angle),
     ),
     dim=1,
   )
 
 
-def _backward_pitch_gravity_target(
-  env: ManagerBasedRlEnv,
-  takeoff_s: float,
-  landing_s: float,
-) -> torch.Tensor:
-  target_progress = torch.clamp(
-    (_time(env) - takeoff_s) / (landing_s - takeoff_s), 0.0, 1.0
-  )
-  return _progress_gravity_target(target_progress)
-
-
-class backflip_state:
-  """Shared state update for reference-free backflip reward terms.
-
-  Reward-manager terms are instantiated independently, so terms that need progress
-  inherit this class and use the same update rule rather than each defining a
-  slightly different progress estimate.
-  """
+class sideflip_state:
+  """Shared state update for reference-free sideflip reward terms."""
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
     del cfg
@@ -104,10 +90,11 @@ class backflip_state:
     env: ManagerBasedRlEnv,
     sensor_name: str | None = None,
     max_rate: float | None = None,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     asset: Entity = env.scene[asset_cfg.name]
-    rate = torch.clamp(-asset.data.root_link_ang_vel_b[:, 1], min=0.0)
+    rate = _side_roll_rate(asset, direction)
     if max_rate is not None:
       rate = torch.clamp(rate, max=max_rate)
 
@@ -125,11 +112,11 @@ class backflip_state:
     if sensor_name is not None:
       self.airborne_once |= _foot_contact_count(env, sensor_name) == 0.0
 
-    env.extras["log"]["Metrics/backflip_progress_mean"] = torch.mean(self.progress)
-    env.extras["log"]["Metrics/backflip_max_height_mean"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_progress_mean"] = torch.mean(self.progress)
+    env.extras["log"]["Metrics/sideflip_max_height_mean"] = torch.mean(
       self.max_height
     )
-    env.extras["log"]["Metrics/backflip_airborne_frac"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_airborne_frac"] = torch.mean(
       self.airborne_once.float()
     )
     return self.progress, delta_progress, self.max_height, self.airborne_once.float()
@@ -144,26 +131,6 @@ class backflip_state:
     return torch.zeros(env.num_envs, device=env.device, dtype=torch.float32)
 
 
-class backflip_progress(backflip_state):
-  """Compatibility reward tracking a one-revolution time schedule."""
-
-  def __call__(
-    self,
-    env: ManagerBasedRlEnv,
-    duration_s: float,
-    takeoff_s: float,
-    landing_s: float,
-    std: float,
-    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-  ) -> torch.Tensor:
-    progress, _, _, _ = self._update_state(env, asset_cfg=asset_cfg)
-    target = torch.clamp((_time(env) - takeoff_s) / (landing_s - takeoff_s), 0.0, 1.0)
-    error = torch.square(progress - target)
-    reward = torch.exp(-error / std**2)
-    env.extras["log"]["Metrics/backflip_target_mean"] = torch.mean(target)
-    return reward * (_phase(env, duration_s) < 1.0).float()
-
-
 def takeoff_vertical_velocity(
   env: ManagerBasedRlEnv,
   start_s: float,
@@ -176,35 +143,22 @@ def takeoff_vertical_velocity(
   return _window(env, start_s, end_s) * torch.clamp(vz / target_vz, 0.0, 1.0)
 
 
-def backward_pitch_rate(
-  env: ManagerBasedRlEnv,
-  start_s: float,
-  end_s: float,
-  target_rate: float,
-  std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  rate = torch.clamp(-asset.data.root_link_ang_vel_b[:, 1], min=0.0)
-  reward = torch.exp(-torch.square(rate - target_rate) / std**2)
-  return reward * _window(env, start_s, end_s)
-
-
-def backward_pitch_rate_dense(
+def side_roll_rate_dense(
   env: ManagerBasedRlEnv,
   start_s: float,
   end_s: float,
   target_rate: float,
   max_rate: float,
+  direction: float = 1.0,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
-  rate = torch.clamp(-asset.data.root_link_ang_vel_b[:, 1], min=0.0, max=max_rate)
+  rate = torch.clamp(_side_roll_rate(asset, direction), min=0.0, max=max_rate)
   return _window(env, start_s, end_s) * torch.clamp(rate / target_rate, 0.0, 1.0)
 
 
-class backflip_progress_delta(backflip_state):
-  """Dense reward for discovering backward rotation, independent of timing."""
+class sideflip_progress_delta(sideflip_state):
+  """Dense reward for discovering sideward rotation, independent of timing."""
 
   def __call__(
     self,
@@ -213,33 +167,37 @@ class backflip_progress_delta(backflip_state):
     end_s: float,
     max_rate: float,
     max_delta: float | None = None,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     _, delta_progress, _, _ = self._update_state(
-      env, max_rate=max_rate, asset_cfg=asset_cfg
+      env, max_rate=max_rate, direction=direction, asset_cfg=asset_cfg
     )
     if max_delta is not None:
       delta_progress = torch.clamp(delta_progress, max=max_delta)
     return _window(env, start_s, end_s) * delta_progress
 
 
-class backflip_progress_final(backflip_state):
-  """Reward being close to one completed revolution after rotation emerges."""
+class sideflip_progress_final(sideflip_state):
+  """Reward being close to one completed sideflip after rotation emerges."""
 
   def __call__(
     self,
     env: ManagerBasedRlEnv,
     start_s: float,
     std: float,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
-    progress, _, _, _ = self._update_state(env, asset_cfg=asset_cfg)
+    progress, _, _, _ = self._update_state(
+      env, direction=direction, asset_cfg=asset_cfg
+    )
     active = (_time(env) >= start_s).float()
     return active * torch.exp(-torch.square(progress - 1.0) / std**2)
 
 
-class progress_based_backflip_orientation(backflip_state):
-  """Track pitch orientation from cumulative progress instead of wall-clock time."""
+class progress_based_sideflip_orientation(sideflip_state):
+  """Track roll orientation from cumulative progress instead of wall-clock time."""
 
   def __call__(
     self,
@@ -248,24 +206,25 @@ class progress_based_backflip_orientation(backflip_state):
     end_s: float,
     std: float,
     max_rate: float | None = None,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
     progress, _, _, _ = self._update_state(
-      env, max_rate=max_rate, asset_cfg=asset_cfg
+      env, max_rate=max_rate, direction=direction, asset_cfg=asset_cfg
     )
-    target_gravity_b = _progress_gravity_target(progress)
+    target_gravity_b = _progress_gravity_target(progress, direction)
     error = torch.sum(
       torch.square(asset.data.projected_gravity_b - target_gravity_b), dim=1
     )
     active = _window(env, start_s, end_s)
-    env.extras["log"]["Metrics/progress_orientation_progress_mean"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_orientation_progress_mean"] = torch.mean(
       progress
     )
     return active * torch.exp(-error / std**2)
 
 
-class apex_height_reward(backflip_state):
+class apex_height_reward(sideflip_state):
   """Reward reaching a useful apex without prescribing a full height schedule."""
 
   def __call__(
@@ -275,49 +234,14 @@ class apex_height_reward(backflip_state):
     target_height: float,
     std: float,
     sensor_name: str | None = None,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     _, _, max_height, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     active = (_time(env) >= start_s).float()
     return active * torch.exp(-torch.square(max_height - target_height) / std**2)
-
-
-def backward_pitch_orientation(
-  env: ManagerBasedRlEnv,
-  takeoff_s: float,
-  landing_s: float,
-  std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  """Compatibility time-based orientation reward."""
-  asset: Entity = env.scene[asset_cfg.name]
-  target_gravity_b = _backward_pitch_gravity_target(env, takeoff_s, landing_s)
-  error = torch.sum(
-    torch.square(asset.data.projected_gravity_b - target_gravity_b), dim=1
-  )
-  active = ((_time(env) >= takeoff_s) & (_time(env) <= landing_s)).float()
-  return active * torch.exp(-error / std**2)
-
-
-def vertical_midflip_orientation(
-  env: ManagerBasedRlEnv,
-  center_s: float,
-  width_s: float,
-  std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  """Compatibility reward for a vertical pitch-axis posture halfway through."""
-  asset: Entity = env.scene[asset_cfg.name]
-  t = _time(env)
-  active = (torch.abs(t - center_s) <= width_s).float()
-  projected_gravity = asset.data.projected_gravity_b
-  vertical_error = torch.square(torch.abs(projected_gravity[:, 0]) - 1.0)
-  lateral_error = torch.square(projected_gravity[:, 1])
-  upright_error = torch.square(projected_gravity[:, 2])
-  error = vertical_error + lateral_error + upright_error
-  return active * torch.exp(-error / std**2)
 
 
 def off_axis_ang_vel_l2(
@@ -326,76 +250,36 @@ def off_axis_ang_vel_l2(
   end_s: float,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-  """Penalize roll/yaw angular velocity so rotation stays on the pitch axis."""
+  """Penalize pitch/yaw angular velocity so rotation stays on the roll axis."""
   asset: Entity = env.scene[asset_cfg.name]
   ang_vel = asset.data.root_link_ang_vel_b
   return _window(env, start_s, end_s) * (
-    torch.square(ang_vel[:, 0]) + torch.square(ang_vel[:, 2])
+    torch.square(ang_vel[:, 1]) + torch.square(ang_vel[:, 2])
   )
 
 
-class excess_backflip_rotation(backflip_state):
-  """Penalize progress beyond one backward revolution."""
+class excess_sideflip_rotation(sideflip_state):
+  """Penalize progress beyond one sideward revolution."""
 
   def __call__(
     self,
     env: ManagerBasedRlEnv,
     start_s: float,
     max_rate: float | None = None,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, max_rate=max_rate, asset_cfg=asset_cfg
+      env, max_rate=max_rate, direction=direction, asset_cfg=asset_cfg
     )
     asset: Entity = env.scene[asset_cfg.name]
-    backward_pitch_rate = torch.clamp(-asset.data.root_link_ang_vel_b[:, 1], min=0.0)
+    side_roll_rate = _side_roll_rate(asset, direction)
     excess_progress = torch.square(torch.clamp(progress - 1.0, min=0.0))
-    post_flip_spin = (_time(env) >= start_s).float() * torch.square(backward_pitch_rate)
-    env.extras["log"]["Metrics/backflip_excess_progress_mean"] = torch.mean(
+    post_flip_spin = (_time(env) >= start_s).float() * torch.square(side_roll_rate)
+    env.extras["log"]["Metrics/sideflip_excess_progress_mean"] = torch.mean(
       torch.clamp(progress - 1.0, min=0.0)
     )
     return excess_progress + 0.02 * post_flip_spin
-
-
-def base_height_schedule(
-  env: ManagerBasedRlEnv,
-  duration_s: float,
-  crouch_height: float,
-  air_height: float,
-  landing_height: float,
-  std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  phase = _phase(env, duration_s)
-  height = asset.data.root_link_pos_w[:, 2]
-  target = torch.where(
-    phase < 0.15,
-    torch.full_like(phase, crouch_height),
-    torch.where(
-      phase < 0.72,
-      torch.full_like(phase, air_height),
-      torch.full_like(phase, landing_height),
-    ),
-  )
-  return torch.exp(-torch.square(height - target) / std**2)
-
-
-def foot_contact_schedule(
-  env: ManagerBasedRlEnv,
-  duration_s: float,
-  sensor_name: str,
-) -> torch.Tensor:
-  phase = _phase(env, duration_s)
-  count = _foot_contact_count(env, sensor_name)
-  early_contact = (count >= 3.0).float()
-  airborne = (count == 0.0).float()
-  landing_contact = (count >= 2.0).float()
-  return torch.where(
-    phase < 0.18,
-    early_contact,
-    torch.where(phase < 0.72, airborne, landing_contact),
-  )
 
 
 def feet_contact_before_takeoff(
@@ -421,27 +305,7 @@ def airborne_after_takeoff(
   ).float()
 
 
-def upright_landing(
-  env: ManagerBasedRlEnv,
-  sensor_name: str,
-  start_s: float,
-  height_target: float,
-  height_std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  active = (_time(env) >= start_s).float()
-  gravity_error = torch.sum(torch.square(asset.data.projected_gravity_b[:, :2]), dim=1)
-  upright = torch.exp(-gravity_error / 0.25**2)
-  height = torch.exp(
-    -torch.square(asset.data.root_link_pos_w[:, 2] - height_target) / height_std**2
-  )
-  contacts = (_foot_contact_count(env, sensor_name) >= 2.0).float()
-
-  return active * upright * height * contacts
-
-
-class landing_success(backflip_state):
+class landing_success(sideflip_state):
   """Smooth landing reward gated by progress, contacts, posture, and low motion."""
 
   def __call__(
@@ -456,10 +320,11 @@ class landing_success(backflip_state):
     height_std: float,
     ang_vel_std: float,
     lin_vel_xy_std: float,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     asset: Entity = env.scene[asset_cfg.name]
     active = (_time(env) >= start_s).float()
@@ -485,7 +350,7 @@ class landing_success(backflip_state):
     success = (progress >= min_progress) & (gravity_xy_l2 <= max_tilt_xy**2) & (
       contact_indicator > 0.0
     )
-    env.extras["log"]["Metrics/backflip_landing_success_frac"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_landing_success_frac"] = torch.mean(
       success.float()
     )
     return (
@@ -499,7 +364,7 @@ class landing_success(backflip_state):
     )
 
 
-class landing_position(backflip_state):
+class landing_position(sideflip_state):
   """Reward landing close to the reset XY position after a plausible flip."""
 
   def __call__(
@@ -510,10 +375,11 @@ class landing_position(backflip_state):
     min_progress: float,
     min_contacts: int,
     xy_std: float,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     asset: Entity = env.scene[asset_cfg.name]
     active = (_time(env) >= start_s).float()
@@ -525,7 +391,7 @@ class landing_position(backflip_state):
     xy_from_origin = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
     xy_error = torch.sum(torch.square(xy_from_origin), dim=1)
     displacement = torch.sqrt(xy_error)
-    env.extras["log"]["Metrics/landing_xy_displacement_mean"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_landing_xy_displacement_mean"] = torch.mean(
       displacement
     )
     return (
@@ -536,7 +402,7 @@ class landing_position(backflip_state):
     )
 
 
-class landing_joint_posture(backflip_state):
+class landing_joint_posture(sideflip_state):
   """Reward returning near the default joint pose after a plausible landing."""
 
   def __call__(
@@ -547,10 +413,11 @@ class landing_joint_posture(backflip_state):
     min_progress: float,
     min_contacts: int,
     std: float,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     asset: Entity = env.scene[asset_cfg.name]
     active = (_time(env) >= start_s).float()
@@ -563,13 +430,13 @@ class landing_joint_posture(backflip_state):
     default_joint_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
     normalized_error = torch.square((joint_pos - default_joint_pos) / std)
     reward = torch.exp(-torch.mean(normalized_error, dim=1))
-    env.extras["log"]["Metrics/landing_joint_error_mean"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_landing_joint_error_mean"] = torch.mean(
       torch.sqrt(torch.mean(torch.square(joint_pos - default_joint_pos), dim=1))
     )
     return active * progress_indicator * contact_indicator * reward
 
 
-class landing_foot_stance(backflip_state):
+class landing_foot_stance(sideflip_state):
   """Reward uncrossed left/right foot placement at landing."""
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
@@ -591,10 +458,11 @@ class landing_foot_stance(backflip_state):
     side_std: float,
     target_width: float,
     width_std: float,
+    direction: float,
     asset_cfg: SceneEntityCfg,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     asset: Entity = env.scene[asset_cfg.name]
     active = (_time(env) >= start_s).float()
@@ -624,48 +492,19 @@ class landing_foot_stance(backflip_state):
     side_reward = torch.exp(-side_error / side_std**2)
     width_reward = torch.exp(-width_error / width_std**2)
     crossed = (fl_y <= 0.0) | (rl_y <= 0.0) | (fr_y >= 0.0) | (rr_y >= 0.0)
-    env.extras["log"]["Metrics/landing_crossed_feet_frac"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_landing_crossed_feet_frac"] = torch.mean(
       crossed.float()
     )
-    env.extras["log"]["Metrics/landing_front_width_mean"] = torch.mean(
+    env.extras["log"]["Metrics/sideflip_landing_front_width_mean"] = torch.mean(
       front_width
     )
-    env.extras["log"]["Metrics/landing_rear_width_mean"] = torch.mean(rear_width)
+    env.extras["log"]["Metrics/sideflip_landing_rear_width_mean"] = torch.mean(
+      rear_width
+    )
     return active * progress_indicator * contact_indicator * side_reward * width_reward
 
 
-def rearward_displacement(
-  env: ManagerBasedRlEnv,
-  duration_s: float,
-  target_x: float,
-  std: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  active = (_phase(env, duration_s) > 0.70).float()
-  x_from_origin = asset.data.root_link_pos_w[:, 0] - env.scene.env_origins[:, 0]
-  return active * torch.exp(-torch.square(x_from_origin - target_x) / std**2)
-
-
-def soft_landing(
-  env: ManagerBasedRlEnv,
-  sensor_name: str,
-) -> torch.Tensor:
-  """Compatibility penalty for high impact forces at any first foot contact."""
-  contact_sensor: ContactSensor = env.scene[sensor_name]
-  assert contact_sensor.data.force is not None
-  forces = contact_sensor.data.force
-  force_magnitude = torch.norm(forces, dim=-1)
-  first_contact = contact_sensor.compute_first_contact(dt=env.step_dt)
-  landing_impact = force_magnitude * first_contact.float()
-  cost = torch.sum(landing_impact, dim=1)
-  num_landings = torch.sum(first_contact.float())
-  mean_landing_force = torch.sum(landing_impact) / torch.clamp(num_landings, min=1)
-  env.extras["log"]["Metrics/landing_force_mean"] = mean_landing_force
-  return cost
-
-
-class soft_landing_gated(backflip_state):
+class soft_landing_gated(sideflip_state):
   """Penalize first-contact impact only after a plausible flip landing."""
 
   def __call__(
@@ -676,10 +515,11 @@ class soft_landing_gated(backflip_state):
     min_progress: float,
     force_scale: float,
     max_penalty: float,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     progress, _, _, _ = self._update_state(
-      env, sensor_name=sensor_name, asset_cfg=asset_cfg
+      env, sensor_name=sensor_name, direction=direction, asset_cfg=asset_cfg
     )
     contact_sensor: ContactSensor = env.scene[sensor_name]
     assert contact_sensor.data.force is not None
@@ -691,5 +531,5 @@ class soft_landing_gated(backflip_state):
     cost = plausible_landing * torch.clamp(raw_cost, max=max_penalty)
     num_landings = torch.sum(first_contact)
     mean_landing_force = torch.sum(landing_impact) / torch.clamp(num_landings, min=1)
-    env.extras["log"]["Metrics/landing_force_mean"] = mean_landing_force
+    env.extras["log"]["Metrics/sideflip_landing_force_mean"] = mean_landing_force
     return cost

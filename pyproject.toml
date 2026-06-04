@@ -1,11 +1,14 @@
 [project]
 name = "unitree_rl_mjlab"
 version = "0.0.1"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 
 dependencies = [
     "mjlab==1.2.0",
-    "mujoco-warp==3.5.0",
+    "mujoco-warp>=3.5.0",
+    "mujoco==3.7.0.dev895794022",
+    "scipy",
+    "warp-lang==1.12.1",
     # rsl-rl-lib is also a transitive dependency of mjlab (pinned ==5.0.1). It is listed
     # here explicitly so the [tool.uv.sources] override below replaces the PyPI build with
     # our fork, which carries multi-GPU resume fixes. The fork branch is itself version
@@ -13,7 +16,21 @@ dependencies = [
     "rsl-rl-lib",
 ]
 
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com/"
+explicit = true
+
+[[tool.uv.index]]
+name = "mujoco"
+url = "https://py.mujoco.org"
+explicit = true
+
 [tool.uv.sources]
+warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }
+mujoco = { index = "mujoco" }
+mujoco-warp = { git = "https://github.com/google-deepmind/mujoco_warp", rev = "5a86ec28aa07741eb2e000d158f4ca4068ec146e" }
 rsl-rl-lib = { git = "https://github.com/curious-jp/rsl_rl.git", branch = "multigpu-resume-fix" }
 
 [build-system]

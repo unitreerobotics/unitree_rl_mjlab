@@ -1,17 +1,17 @@
-"""Unitree Go2 backflip environment configuration."""
+"""Unitree Go2 sideflip environment configuration."""
 
 from src.assets.robots import get_go2_robot_cfg
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers import TerminationTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 
-import src.tasks.back_flip.mdp as mdp
-from src.tasks.back_flip.backflip_env_cfg import FLIP_DURATION_S, make_backflip_env_cfg
+import src.tasks.side_flip.mdp as mdp
+from src.tasks.side_flip.sideflip_env_cfg import FLIP_DURATION_S, make_sideflip_env_cfg
 
 
-def unitree_go2_backflip_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  """Create Unitree Go2 flat-ground backflip configuration."""
-  cfg = make_backflip_env_cfg()
+def unitree_go2_sideflip_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Create Unitree Go2 flat-ground sideflip configuration."""
+  cfg = make_sideflip_env_cfg()
   cfg.scene.entities = {"robot": get_go2_robot_cfg()}
 
   foot_names = ("FR", "FL", "RR", "RL")

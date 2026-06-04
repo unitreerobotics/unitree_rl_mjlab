@@ -1,6 +1,4 @@
-"""Backflip task configuration."""
-
-import math
+"""Sideflip task configuration."""
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
@@ -18,18 +16,15 @@ from mjlab.terrains import TerrainEntityCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 
-import src.tasks.back_flip.mdp as mdp
+import src.tasks.side_flip.mdp as mdp
 
 
 FLIP_DURATION_S = 1.6
+SIDEFLIP_DIRECTION = 1.0
 
 
-def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
-  """Create base backflip task configuration."""
-
-  ##
-  # Observations
-  ##
+def make_sideflip_env_cfg() -> ManagerBasedRlEnvCfg:
+  """Create base sideflip task configuration."""
 
   actor_terms = {
     "base_lin_vel": ObservationTermCfg(
@@ -85,10 +80,6 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
   }
 
-  ##
-  # Actions
-  ##
-
   actions: dict[str, ActionTermCfg] = {
     "joint_pos": JointPositionActionCfg(
       entity_name="robot",
@@ -97,10 +88,6 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
       use_default_offset=True,
     )
   }
-
-  ##
-  # Events
-  ##
 
   events = {
     "reset_base": EventTermCfg(
@@ -158,17 +145,6 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
   }
 
-  ##
-  # Rewards
-  ##
-
-  # Suggested curriculum for this reference-free reward set:
-  # Stage 1: takeoff_vertical_velocity + backward_pitch_rate_dense +
-  #   backflip_progress_delta + airborne_after_takeoff, with weak/no landing terms.
-  # Stage 2: add backflip_progress_final + progress_based_backflip_orientation +
-  #   excess_backflip_rotation once takeoff and rotation are discovered.
-  # Stage 3: add landing_success + soft_landing_gated and stronger safety penalties.
-  # Stage 4: increase torque/action/joint/body constraints for sim-to-real.
   rewards = {
     "feet_contact_before_takeoff": RewardTermCfg(
       func=mdp.feet_contact_before_takeoff,
@@ -189,24 +165,26 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "target_vz": 1.8,
       },
     ),
-    "backward_pitch_rate_dense": RewardTermCfg(
-      func=mdp.backward_pitch_rate_dense,
+    "side_roll_rate_dense": RewardTermCfg(
+      func=mdp.side_roll_rate_dense,
       weight=2.0,
       params={
         "start_s": 0.08,
         "end_s": 1.05,
         "target_rate": 7.0,
         "max_rate": 12.0,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
-    "backflip_progress_delta": RewardTermCfg(
-      func=mdp.backflip_progress_delta,
+    "sideflip_progress_delta": RewardTermCfg(
+      func=mdp.sideflip_progress_delta,
       weight=8.0,
       params={
         "start_s": 0.08,
         "end_s": 1.20,
         "max_rate": 12.0,
         "max_delta": 0.05,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "airborne_after_takeoff": RewardTermCfg(
@@ -226,24 +204,27 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "target_height": 0.58,
         "std": 0.18,
         "sensor_name": "feet_ground_contact",
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
-    "progress_based_backflip_orientation": RewardTermCfg(
-      func=mdp.progress_based_backflip_orientation,
+    "progress_based_sideflip_orientation": RewardTermCfg(
+      func=mdp.progress_based_sideflip_orientation,
       weight=2.0,
       params={
         "start_s": 0.12,
         "end_s": 1.25,
         "std": 0.55,
         "max_rate": 12.0,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
-    "backflip_progress_final": RewardTermCfg(
-      func=mdp.backflip_progress_final,
+    "sideflip_progress_final": RewardTermCfg(
+      func=mdp.sideflip_progress_final,
       weight=10.0,
       params={
         "start_s": 0.85,
         "std": 0.22,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "landing_success": RewardTermCfg(
@@ -259,6 +240,7 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "height_std": 0.14,
         "ang_vel_std": 3.0,
         "lin_vel_xy_std": 1.0,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "landing_position": RewardTermCfg(
@@ -270,6 +252,7 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "min_progress": 0.85,
         "min_contacts": 4,
         "xy_std": 0.18,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "landing_joint_posture": RewardTermCfg(
@@ -281,6 +264,7 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "min_progress": 0.85,
         "min_contacts": 4,
         "std": 0.25,
+        "direction": SIDEFLIP_DIRECTION,
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
     ),
@@ -296,6 +280,7 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "side_std": 0.08,
         "target_width": 0.28,
         "width_std": 0.10,
+        "direction": SIDEFLIP_DIRECTION,
         "asset_cfg": SceneEntityCfg("robot", site_names=("FR", "FL", "RR", "RL")),
       },
     ),
@@ -307,12 +292,13 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "end_s": 1.20,
       },
     ),
-    "excess_backflip_rotation": RewardTermCfg(
-      func=mdp.excess_backflip_rotation,
+    "excess_sideflip_rotation": RewardTermCfg(
+      func=mdp.excess_sideflip_rotation,
       weight=-6.0,
       params={
         "start_s": 1.05,
         "max_rate": 12.0,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "soft_landing_gated": RewardTermCfg(
@@ -324,6 +310,7 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "min_progress": 0.80,
         "force_scale": 800.0,
         "max_penalty": 3.0,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
     "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-5.0),
@@ -331,10 +318,6 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
     "joint_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-10.0),
     "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.02),
   }
-
-  ##
-  # Terminations
-  ##
 
   terminations = {
     "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
@@ -362,13 +345,10 @@ def make_backflip_env_cfg() -> ManagerBasedRlEnvCfg:
         "max_height": 0.48,
         "max_ang_vel": 3.0,
         "min_contacts": 4,
+        "direction": SIDEFLIP_DIRECTION,
       },
     ),
   }
-
-  ##
-  # Metrics
-  ##
 
   metrics = {
     "mean_action_acc": MetricsTermCfg(func=mdp.mean_action_acc),

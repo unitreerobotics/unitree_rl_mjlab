@@ -11,6 +11,7 @@ from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import TerminationTermCfg
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.observation_manager import ObservationGroupCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
@@ -329,6 +330,45 @@ def unitree_go2_no_phase_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = unitree_go2_rough_env_cfg(play=play)
   del cfg.observations["actor"].terms["phase"]
   del cfg.observations["critic"].terms["phase"]
+  return cfg
+
+
+def unitree_go2_rough_split_obs_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Go2 rough-terrain config with the actor observation split into groups.
+
+  Identical dynamics/terms to `unitree_go2_rough_env_cfg`; the only change is
+  that the single concatenated ``actor`` observation group is re-bucketed into
+  per-term groups (``height_scan``, ``command``, ``projected_gravity``,
+  ``proprio``, ``last_action``) so the observation-encoder framework can address
+  individual signals via ``encoder_input_keys``/``passthrough_keys``. The
+  privileged ``critic`` group is left untouched (single concatenated tensor).
+
+  Used by the ``Unitree-Go2-Rough-Encoder-*`` ablation tasks. Train these with a
+  runner that does not export ONNX (e.g. ``MjlabOnPolicyRunner``).
+  """
+  cfg = unitree_go2_rough_env_cfg(play=play)
+
+  actor_group = cfg.observations["actor"]
+  terms = actor_group.terms
+  corrupt = actor_group.enable_corruption  # False in play mode (handled upstream).
+
+  def _group(term_names: tuple[str, ...]) -> ObservationGroupCfg:
+    return ObservationGroupCfg(
+      terms={name: terms[name] for name in term_names},
+      concatenate_terms=True,
+      enable_corruption=corrupt,
+      history_length=1,
+    )
+
+  cfg.observations = {
+    "height_scan": _group(("height_scan",)),
+    "command": _group(("command",)),
+    "projected_gravity": _group(("projected_gravity",)),
+    "proprio": _group(("base_ang_vel", "phase", "joint_pos", "joint_vel")),
+    "last_action": _group(("actions",)),
+    # Privileged critic obs kept as the original single concatenated group.
+    "critic": cfg.observations["critic"],
+  }
   return cfg
 
 

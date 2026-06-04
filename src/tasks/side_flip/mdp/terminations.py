@@ -9,43 +9,19 @@ from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
 
+from src.tasks.back_flip.mdp.terminations import (  # noqa: F401
+  base_height_below,
+  illegal_contact_after_time,
+)
+
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
 _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
-def illegal_contact_after_time(
-  env: ManagerBasedRlEnv,
-  sensor_name: str,
-  force_threshold: float,
-  grace_s: float,
-) -> torch.Tensor:
-  sensor: ContactSensor = env.scene[sensor_name]
-  data = sensor.data
-  active = env.episode_length_buf * env.step_dt > grace_s
-  if data.force_history is not None:
-    force_mag = torch.norm(data.force_history, dim=-1)
-    illegal = (force_mag > force_threshold).any(dim=-1).any(dim=-1)
-  else:
-    assert data.found is not None
-    illegal = torch.any(data.found, dim=-1)
-  return active & illegal
-
-
-def base_height_below(
-  env: ManagerBasedRlEnv,
-  min_height: float,
-  grace_s: float,
-  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  active = env.episode_length_buf * env.step_dt > grace_s
-  return active & (asset.data.root_link_pos_w[:, 2] < min_height)
-
-
 class one_flip_success:
-  """Timeout-style success when one flip is landed, not just standing still."""
+  """Timeout-style success when one sideflip is landed."""
 
   def __init__(self, cfg, env: ManagerBasedRlEnv):
     del cfg
@@ -67,12 +43,14 @@ class one_flip_success:
     max_height: float,
     max_ang_vel: float,
     min_contacts: int = 2,
+    direction: float = 1.0,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
-    backward_pitch_rate = torch.clamp(-asset.data.root_link_ang_vel_b[:, 1], min=0.0)
+    sign = 1.0 if direction >= 0.0 else -1.0
+    side_roll_rate = torch.clamp(sign * asset.data.root_link_ang_vel_b[:, 0], min=0.0)
     self.progress = torch.clamp(
-      self.progress + backward_pitch_rate * env.step_dt / (2.0 * math.pi),
+      self.progress + side_roll_rate * env.step_dt / (2.0 * math.pi),
       min=0.0,
       max=2.0,
     )
