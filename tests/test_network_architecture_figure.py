@@ -52,7 +52,7 @@ def test_go2_encoder_pipeline_splits_encoder_and_passthrough():
     "proprio",
     "last_action",
   ]
-  assert spec.observations["height_scan"].dim == 160
+  assert spec.observations["height_scan"].dim == 187
   assert spec.observations["proprio"].dim == 29
   assert spec.observations["last_action"].dim == 12
 
@@ -67,7 +67,7 @@ def test_go2_conv_pipeline_preserves_encoder_details():
   assert enc_cfg is not None
   assert enc_cfg["primary_key"] == "height_scan"
   assert enc_cfg["context_keys"] == ["command", "projected_gravity"]
-  assert enc_cfg["input_hw"] == [16, 10]
+  assert enc_cfg["input_hw"] == [17, 11]
   assert enc_cfg["latent_dim"] == 32
 
 

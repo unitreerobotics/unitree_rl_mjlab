@@ -11,7 +11,7 @@ flowchart LR
   S["Robot / command state<br/>IMU/body state, command/joystick, joint state, previous action, terrain scan"]:::sensor
 
   subgraph OBS[Observation groups]
-    N_obs_height_scan["height_scan (160)<br/>height_scan(160)"]:::obs
+    N_obs_height_scan["height_scan (187)<br/>height_scan(187)"]:::obs
     N_obs_command["command (3)<br/>command(3)"]:::obs
     N_obs_projected_gravity["projected_gravity (3)<br/>projected_gravity(3)"]:::obs
     N_obs_proprio["proprio (29)<br/>base_ang_vel(3), phase(2), joint_pos(12), joint_vel(12)"]:::obs
@@ -21,7 +21,7 @@ flowchart LR
   PRE["Observation preprocessing<br/>noise during training -> scale -> concat/group"]:::prep
   OBS --> PRE
   ACTOR["MLPModel<br/>MLP: 512 -> 256 -> 128 -> 12<br/>activation: elu<br/>normalization on MLP path"]:::net
-  PRE -->|207| ACTOR
+  PRE -->|234| ACTOR
   DIST["Gaussian distribution<br/>deterministic mean for inference"]:::net
   ACTOR -->|12| DIST
   ARAW["a_raw (12)<br/>normalized action delta<br/>not final q"]:::action
@@ -32,12 +32,12 @@ flowchart LR
   APROC -->|12| QT
 
   subgraph CRITIC[Critic / value branch]
-    COBS["critic observations<br/>critic(234)"]:::critic
+    COBS["critic observations<br/>critic(261)"]:::critic
     CNORM["normalization: yes"]:::critic
     CMLP["Critic: MLPModel<br/>MLP: 512 -> 256 -> 128 -> 1<br/>activation: elu"]:::critic
     V["V(s) scalar"]:::critic
-    COBS -->|234| CNORM
-    CNORM -->|234| CMLP
+    COBS -->|261| CNORM
+    CNORM -->|261| CMLP
     CMLP -->|1| V
   end
   OBS -. privileged/state obs .-> COBS

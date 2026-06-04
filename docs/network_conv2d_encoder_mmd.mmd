@@ -11,7 +11,7 @@ flowchart LR
   S["Robot / command state<br/>IMU/body state, command/joystick, joint state, previous action, terrain scan"]:::sensor
 
   subgraph OBS[Observation groups]
-    N_obs_height_scan["height_scan (160)<br/>height_scan(160)"]:::obs
+    N_obs_height_scan["height_scan (187)<br/>height_scan(187)"]:::obs
     N_obs_command["command (3)<br/>command(3)"]:::obs
     N_obs_projected_gravity["projected_gravity (3)<br/>projected_gravity(3)"]:::obs
     N_obs_proprio["proprio (29)<br/>base_ang_vel(3), phase(2), joint_pos(12), joint_vel(12)"]:::obs
@@ -20,10 +20,10 @@ flowchart LR
   S --> OBS
   PRE["Observation preprocessing<br/>noise during training -> scale -> concat/group"]:::prep
   OBS --> PRE
-  ENC["Observation encoder<br/>conv2d, input_hw [16, 10], channels [16, 32, 64], k [3, 3, 3], s [1, 2, 2], pool avg, latent 32, context ['command', 'projected_gravity']<br/>inputs: height_scan, command, projected_gravity"]:::net
+  ENC["Observation encoder<br/>conv2d, input_hw [17, 11], channels [16, 32, 64], k [3, 3, 3], s [1, 2, 2], pool avg, latent 32, context ['command', 'projected_gravity']<br/>inputs: height_scan, command, projected_gravity"]:::net
   PASS["Passthrough + normalizer<br/>proprio, last_action"]:::net
   CAT["Concat<br/>encoder latent + passthrough"]:::net
-  PRE -->|166| ENC
+  PRE -->|193| ENC
   PRE -->|41| PASS
   ENC -->|32| CAT
   PASS -->|41| CAT
@@ -39,12 +39,12 @@ flowchart LR
   APROC -->|12| QT
 
   subgraph CRITIC[Critic / value branch]
-    COBS["critic observations<br/>critic(234)"]:::critic
+    COBS["critic observations<br/>critic(261)"]:::critic
     CNORM["normalization: yes"]:::critic
     CMLP["Critic: MLPModel<br/>MLP: 512 -> 256 -> 128 -> 1<br/>activation: elu"]:::critic
     V["V(s) scalar"]:::critic
-    COBS -->|234| CNORM
-    CNORM -->|234| CMLP
+    COBS -->|261| CNORM
+    CNORM -->|261| CMLP
     CMLP -->|1| V
   end
   OBS -. privileged/state obs .-> COBS

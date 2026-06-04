@@ -34,7 +34,7 @@ _TERM_DIMS: dict[str, int] = {
   "foot_contact": 4,
   "foot_contact_forces": 12,
   "foot_height": 4,
-  "height_scan": 160,
+  "height_scan": 187,
 }
 
 _ACTION_SIZED_TERMS = {
@@ -1029,7 +1029,7 @@ def _parse_args() -> argparse.Namespace:
     "--obs-dim",
     action="append",
     default=[],
-    help="Override an observation term dimension, e.g. --obs-dim height_scan=160.",
+    help="Override an observation term dimension, e.g. --obs-dim height_scan=187.",
   )
   return parser.parse_args()
 
