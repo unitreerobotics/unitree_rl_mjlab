@@ -56,7 +56,14 @@ def build_observation_encoder(
 
     return Conv2dObservationEncoder(keys, obs_shapes, **cfg)
 
-  if enc_type in ("pretrained_ae", "transformer"):
+  if enc_type == "pretrained_ae":
+    from src.rl_models.encoders.pretrained_ae_encoder import (
+      PretrainedAEObservationEncoder,
+    )
+
+    return PretrainedAEObservationEncoder(keys, obs_shapes, **cfg)
+
+  if enc_type == "transformer":
     raise NotImplementedError(
       f"Observation encoder type '{enc_type}' is planned but not implemented. "
       "See docs/observation_encoders_planned.md for the intended design."
@@ -64,5 +71,5 @@ def build_observation_encoder(
 
   raise ValueError(
     f"Unknown observation encoder type '{enc_type}'. Valid types: "
-    "identity, mlp, conv1d, conv2d (pretrained_ae and transformer are planned)."
+    "identity, mlp, conv1d, conv2d, pretrained_ae (transformer is planned)."
   )

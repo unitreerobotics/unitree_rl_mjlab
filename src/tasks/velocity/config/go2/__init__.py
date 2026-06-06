@@ -7,6 +7,7 @@ from .encoder_ablation_rl_cfg import (
   conv2d_encoder_cfg,
   mlp_encoder_height_only_cfg,
   mlp_encoder_with_state_cfg,
+  pretrained_ae_encoder_cfg,
   raw_height_scan_cfg,
 )
 from .env_cfgs import (
@@ -86,6 +87,7 @@ for _suffix, _cfg_fn in (
   ("MLPState", mlp_encoder_with_state_cfg),
   ("Conv1d", conv1d_encoder_cfg),
   ("Conv2d", conv2d_encoder_cfg),
+  ("AE", pretrained_ae_encoder_cfg),
 ):
   register_mjlab_task(
     task_id=f"Unitree-Go2-Rough-Encoder-{_suffix}",

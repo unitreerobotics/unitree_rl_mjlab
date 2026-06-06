@@ -902,6 +902,15 @@ def _encoder_summary(actor: ModelSpec) -> str:
     if cfg.get("context_keys"):
       parts.append(f"context {cfg.get('context_keys')}")
     return ", ".join(parts)
+  if enc_type == "pretrained_ae":
+    parts = [
+      "pretrained_ae",
+      f"latent {cfg.get('latent_dim')}",
+      f"freeze {cfg.get('freeze', True)}",
+    ]
+    if cfg.get("context_keys"):
+      parts.append(f"context {cfg.get('context_keys')}")
+    return ", ".join(parts)
   if enc_type == "identity":
     return "identity flatten/concat"
   return enc_type

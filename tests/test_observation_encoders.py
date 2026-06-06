@@ -12,6 +12,7 @@ import torch
 from rsl_rl.models import MLPModel
 from tensordict import TensorDict
 
+from src.rl_models.autoencoder import HeightScanAutoEncoder
 from src.rl_models.encoder_mlp_model import EncoderMLPModel
 from src.rl_models.encoders import build_observation_encoder
 from src.tasks.velocity.config.go2.encoder_ablation_rl_cfg import (
@@ -151,10 +152,91 @@ def test_conv2d_flat_without_input_hw_errors():
     )
 
 
+def _make_ae_checkpoint(tmp_path, latent_dim=16):
+  model = HeightScanAutoEncoder(
+    input_dim=HEIGHT_L,
+    latent_dim=latent_dim,
+    hidden_dims=[64],
+    decoder_hidden_dims=[64],
+  )
+  path = tmp_path / "height_scan_ae.pt"
+  torch.save(
+    {
+      "state_dict": model.state_dict(),
+      "model_kwargs": {
+        "input_dim": HEIGHT_L,
+        "latent_dim": latent_dim,
+        "hidden_dims": [64],
+        "decoder_hidden_dims": [64],
+      },
+    },
+    path,
+  )
+  return path
+
+
+def _pretrained_ae_cfg(checkpoint_path, freeze=True, latent_dim=16):
+  return {
+    "type": "pretrained_ae",
+    "encoder_input_keys": ["height_scan"],
+    "checkpoint_path": str(checkpoint_path),
+    "latent_dim": latent_dim,
+    "freeze": freeze,
+    "encoder_kwargs": {"hidden_dims": [64], "decoder_hidden_dims": [64]},
+  }
+
+
+def test_pretrained_ae_encoder_frozen(tmp_path):
+  obs = _make_obs()
+  keys = ["height_scan"]
+  enc = build_observation_encoder(
+    _pretrained_ae_cfg(_make_ae_checkpoint(tmp_path), freeze=True),
+    _shapes(obs, keys),
+    keys,
+  )
+  out = enc({k: obs[k] for k in keys})
+  assert enc.output_dim == 16 and out.shape == (B, 16)
+  assert not torch.isnan(out).any()
+  assert all(not p.requires_grad for p in enc.pretrained_encoder.parameters())
+
+  enc.train()
+  assert not enc.pretrained_encoder.training
+  assert all(not p.requires_grad for p in enc.pretrained_encoder.parameters())
+
+
+def test_pretrained_ae_encoder_finetune_trainable(tmp_path):
+  obs = _make_obs()
+  keys = ["height_scan"]
+  enc = build_observation_encoder(
+    _pretrained_ae_cfg(_make_ae_checkpoint(tmp_path), freeze=False),
+    _shapes(obs, keys),
+    keys,
+  )
+  assert any(p.requires_grad for p in enc.pretrained_encoder.parameters())
+  assert enc({k: obs[k] for k in keys}).shape == (B, 16)
+
+
+def test_pretrained_ae_encoder_with_context(tmp_path):
+  obs = _make_obs()
+  keys = ["height_scan", "command", "projected_gravity"]
+  cfg = _pretrained_ae_cfg(_make_ae_checkpoint(tmp_path), freeze=True)
+  cfg.update(
+    {
+      "encoder_input_keys": keys,
+      "primary_key": "height_scan",
+      "context_keys": ["command", "projected_gravity"],
+      "context_hidden_dims": [8],
+    }
+  )
+  enc = build_observation_encoder(cfg, _shapes(obs, keys), keys)
+  out = enc({k: obs[k] for k in keys})
+  assert enc.output_dim == 16 and out.shape == (B, 16)
+  assert not torch.isnan(out).any()
+
+
 def test_planned_encoders_not_implemented():
-  for t in ("pretrained_ae", "transformer"):
-    with pytest.raises(NotImplementedError, match="planned"):
-      build_observation_encoder({"type": t}, {"height_scan": (HEIGHT_L,)}, ["height_scan"])
+  with pytest.raises(NotImplementedError, match="planned"):
+    build_observation_encoder({"type": "transformer"}, {"height_scan": (HEIGHT_L,)}, ["height_scan"])
 
 
 def test_builder_unknown_type_errors():

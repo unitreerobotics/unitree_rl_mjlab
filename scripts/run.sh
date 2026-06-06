@@ -144,6 +144,9 @@ GPU_ENV=(
     "MJLAB_NUM_ENVS=${NUM_ENVS}"
     "MJLAB_RESUME=${RESUME}"
 )
+if [[ -n "${HEIGHT_SCAN_AE_CHECKPOINT:-}" ]]; then
+    GPU_ENV+=("HEIGHT_SCAN_AE_CHECKPOINT=${HEIGHT_SCAN_AE_CHECKPOINT}")
+fi
 if [[ "${NUM_GPUS}" -gt 1 ]]; then
     USE_ALL_GPUS=true
 fi

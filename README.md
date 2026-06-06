@@ -88,6 +88,19 @@ Record playback as MP4 using `scripts/play.sh`:
 
 Videos are saved under `<checkpoint_dir>/videos/play/rl-video-step-0.mp4`. Attribution videos are saved as `<checkpoint_dir>/videos/play/rl-video-attribution-step-0.mp4`. On headless machines, `MUJOCO_GL=egl` is set automatically.
 
+### Simulator Selection
+
+`play.sh` defaults to the local mjlab playback path. `mujoco` is an alias for the same local path. `newton` and `isaacsim` dispatch through an external Isaac Lab checkout, so set `ISAACLAB_ROOT` first and pass an explicit compatible checkpoint:
+
+```bash
+./scripts/play.sh Unitree-Go2-Flat --simulation mjlab --checkpoint <path>
+./scripts/play.sh Unitree-Go2-Flat --simulation mujoco --checkpoint <path>
+ISAACLAB_ROOT=/path/to/IsaacLab ./scripts/play.sh Unitree-Go2-Flat --simulation newton --checkpoint <path>
+ISAACLAB_ROOT=/path/to/IsaacLab ./scripts/play.sh Unitree-Go2-Flat --simulation isaacsim --checkpoint <path>
+```
+
+For Isaac Lab playback, Go2 tasks default to `Isaac-Velocity-Flat-Unitree-Go2-v0`. Override that with `--isaac-task <task>` when needed.
+
 ### Visualization Results
 
 | MuJoCo | Physical |

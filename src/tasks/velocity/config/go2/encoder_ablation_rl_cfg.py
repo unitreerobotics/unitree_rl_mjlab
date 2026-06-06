@@ -20,6 +20,7 @@ out of scope for the ablation phase.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mjlab.rl import (
@@ -170,3 +171,27 @@ def conv2d_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
       "latent_dim": 32,
     },
   )
+
+def pretrained_ae_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
+  """Pretrained autoencoder encoder over height_scan, with state context."""
+  checkpoint_path = os.environ.get(
+    "HEIGHT_SCAN_AE_CHECKPOINT",
+    "logs/pretrained_autoencoders/height_scan_ae.pt",
+  )
+  return _make_runner_cfg(
+    "go2_velocity_encoder_ae",
+    {
+      "type": "pretrained_ae",
+      "encoder_input_keys": ["height_scan", "command", "projected_gravity"],
+      "passthrough_keys": None,
+      "primary_key": "height_scan",
+      "context_keys": ["command", "projected_gravity"],
+      "checkpoint_path": checkpoint_path,
+      "encoder_class": "src.rl_models.autoencoder:HeightScanAutoEncoder",
+      "latent_dim": 32,
+      "context_hidden_dims": [64],
+      "freeze": True,
+      "strict": False,
+    },
+  )
+

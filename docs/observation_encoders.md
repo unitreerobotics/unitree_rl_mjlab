@@ -36,6 +36,7 @@ rl_models/
   encoders/
     base.py                   # BaseObservationEncoder + helpers
     identity.py  mlp_encoder.py  conv1d_encoder.py  conv2d_encoder.py
+    pretrained_ae_encoder.py  # checkpoint-backed autoencoder features
     builder.py                # build_observation_encoder(...)
 ```
 
@@ -68,7 +69,7 @@ Common keys (all encoder types):
 
 | Key                  | Meaning                                                            |
 |----------------------|-------------------------------------------------------------------|
-| `type`               | `identity` \| `mlp` \| `conv1d` \| `conv2d`                        |
+| `type`               | `identity` \| `mlp` \| `conv1d` \| `conv2d` \| `pretrained_ae`       |
 | `encoder_input_keys` | ordered observation groups fed to the encoder                     |
 | `passthrough_keys`   | groups concatenated raw after the latent. `null`/omitted ⇒ **all groups in `obs_groups[obs_set]` except `encoder_input_keys`** |
 
@@ -129,8 +130,36 @@ error.
  "context_hidden_dims": [64], "latent_dim": 32}
 ```
 
-> `pretrained_ae` and `transformer` are **planned but not implemented** in this
-> phase. The builder raises `NotImplementedError` for them. See
+### `pretrained_ae` — pretrained AutoEncoder encoder
+Loads a pretrained autoencoder checkpoint and uses only its encoder path as a
+feature extractor. `freeze=True` keeps the pretrained encoder in eval mode with
+`requires_grad=False`; `freeze=False` lets PPO fine-tune it. No reconstruction
+loss is added during PPO.
+```python
+{"type": "pretrained_ae",
+ "encoder_input_keys": ["height_scan"],
+ "passthrough_keys": None,
+ "checkpoint_path": "/path/to/height_scan_ae.pt",
+ "encoder_class": "src.rl_models.autoencoder:HeightScanAutoEncoder",
+ "latent_dim": 32, "freeze": True, "strict": False}
+```
+With context fusion, include the context groups in `encoder_input_keys` and add
+`primary_key`, `context_keys`, and `context_hidden_dims`:
+```python
+{"type": "pretrained_ae",
+ "encoder_input_keys": ["height_scan", "command", "projected_gravity"],
+ "primary_key": "height_scan",
+ "context_keys": ["command", "projected_gravity"],
+ "checkpoint_path": "/path/to/height_scan_ae.pt",
+ "latent_dim": 32, "context_hidden_dims": [64], "freeze": True}
+```
+`src.rl_models.autoencoder.HeightScanAutoEncoder` is a small example MLP
+autoencoder. Runtime model code lives under `src/rl_models`; offline checkpoint
+creation belongs in `tools/`. `tools/train_height_scan_autoencoder.py` trains
+and saves checkpoints compatible with this encoder.
+
+> `transformer` is **planned but not implemented** in this phase. The builder
+> raises `NotImplementedError` for it. See
 > [`observation_encoders_planned.md`](observation_encoders_planned.md).
 
 ## Switching encoders from config
@@ -196,9 +225,9 @@ actor for simplicity; the critic keeps `obs_normalization=True` unchanged.
 
 ## Out of scope
 
-No reconstruction / auxiliary losses. The pretrained-AE encoder (planned) is
-intended purely as a feature encoder, not trained with a reconstruction loss
-during PPO. Auxiliary losses can be added later but are out of scope here.
+No reconstruction / auxiliary losses. The pretrained-AE encoder is intended
+purely as a feature encoder during PPO; train reconstruction offline before PPO.
+Auxiliary PPO losses can be added later but are out of scope here.
 
 ## Running the tests
 
