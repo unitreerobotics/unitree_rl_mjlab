@@ -131,9 +131,28 @@ def mlp_encoder_with_state_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 def conv1d_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
-  """Conv1d encoder over the ordered height-scan vector, with context."""
+  """Conv1d encoder over height_scan only."""
   return _make_runner_cfg(
     "go2_velocity_encoder_conv1d",
+    {
+      "type": "conv1d",
+      "encoder_input_keys": ["height_scan"],
+      "passthrough_keys": None,
+      "primary_key": "height_scan",
+      "channels": [16, 32, 64],
+      "kernel_sizes": [5, 3, 3],
+      "strides": [2, 2, 1],
+      "activation": "elu",
+      "global_pool": "avg",
+      "latent_dim": 32,
+    },
+  )
+
+
+def conv1d_state_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
+  """State-conditioned Conv1d encoder (height_scan + command + gravity)."""
+  return _make_runner_cfg(
+    "go2_velocity_encoder_conv1d_state",
     {
       "type": "conv1d",
       "encoder_input_keys": ["height_scan", "command", "projected_gravity"],
@@ -152,9 +171,29 @@ def conv1d_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 def conv2d_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
-  """Conv2d encoder over the height scan reshaped to a 17x11 grid."""
+  """Conv2d encoder over height_scan only, reshaped to a 17x11 grid."""
   return _make_runner_cfg(
     "go2_velocity_encoder_conv2d",
+    {
+      "type": "conv2d",
+      "encoder_input_keys": ["height_scan"],
+      "passthrough_keys": None,
+      "primary_key": "height_scan",
+      "input_hw": [17, 11],
+      "channels": [16, 32, 64],
+      "kernel_sizes": [3, 3, 3],
+      "strides": [1, 2, 2],
+      "activation": "elu",
+      "global_pool": "avg",
+      "latent_dim": 32,
+    },
+  )
+
+
+def conv2d_state_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
+  """State-conditioned Conv2d encoder (height_scan + command + gravity)."""
+  return _make_runner_cfg(
+    "go2_velocity_encoder_conv2d_state",
     {
       "type": "conv2d",
       "encoder_input_keys": ["height_scan", "command", "projected_gravity"],
@@ -171,6 +210,7 @@ def conv2d_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
       "latent_dim": 32,
     },
   )
+
 
 def pretrained_ae_encoder_cfg() -> RslRlOnPolicyRunnerCfg:
   """Pretrained autoencoder encoder over height_scan, with state context."""

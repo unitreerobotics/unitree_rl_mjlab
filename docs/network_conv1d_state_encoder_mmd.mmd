@@ -1,4 +1,4 @@
-%% Policy Pipeline: Unitree-Go2-Rough-Encoder-Conv2d
+%% Policy Pipeline: Unitree-Go2-Rough-Encoder-Conv1dState
 flowchart LR
   classDef sensor fill:#dbeafe,stroke:#2563eb,color:#0f172a;
   classDef obs fill:#e0f2fe,stroke:#0284c7,color:#0f172a;
@@ -20,15 +20,15 @@ flowchart LR
   S --> OBS
   PRE["Observation preprocessing<br/>noise during training -> scale -> concat/group"]:::prep
   OBS --> PRE
-  ENC["Observation encoder<br/>conv2d, input_hw [17, 11], channels [16, 32, 64], k [3, 3, 3], s [1, 2, 2], pool avg, latent 32<br/>inputs: height_scan"]:::net
-  PASS["Passthrough + normalizer<br/>command, projected_gravity, proprio, last_action"]:::net
+  ENC["Observation encoder<br/>conv1d, channels [16, 32, 64], k [5, 3, 3], s [2, 2, 1], pool avg, latent 32, context ['command', 'projected_gravity']<br/>inputs: height_scan, command, projected_gravity"]:::net
+  PASS["Passthrough + normalizer<br/>proprio, last_action"]:::net
   CAT["Concat<br/>encoder latent + passthrough"]:::net
-  PRE -->|187| ENC
-  PRE -->|47| PASS
+  PRE -->|193| ENC
+  PRE -->|41| PASS
   ENC -->|32| CAT
-  PASS -->|47| CAT
+  PASS -->|41| CAT
   ACTOR["EncoderMLPModel<br/>MLP: 512 -> 256 -> 128 -> 12<br/>activation: elu<br/>normalization on MLP path"]:::net
-  CAT -->|79| ACTOR
+  CAT -->|73| ACTOR
   DIST["Gaussian distribution<br/>deterministic mean for inference"]:::net
   ACTOR -->|12| DIST
   ARAW["a_raw (12)<br/>normalized action delta<br/>not final q"]:::action

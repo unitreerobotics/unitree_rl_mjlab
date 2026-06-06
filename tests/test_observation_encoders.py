@@ -18,7 +18,9 @@ from src.rl_models.encoders import build_observation_encoder
 from src.tasks.velocity.config.go2.encoder_ablation_rl_cfg import (
   ENCODER_MODEL,
   conv1d_encoder_cfg,
+  conv1d_state_encoder_cfg,
   conv2d_encoder_cfg,
+  conv2d_state_encoder_cfg,
   mlp_encoder_height_only_cfg,
   mlp_encoder_with_state_cfg,
   raw_height_scan_cfg,
@@ -376,7 +378,9 @@ def _encoder_ablation_cfgs():
     mlp_encoder_height_only_cfg(),
     mlp_encoder_with_state_cfg(),
     conv1d_encoder_cfg(),
+    conv1d_state_encoder_cfg(),
     conv2d_encoder_cfg(),
+    conv2d_state_encoder_cfg(),
   )
 
 
@@ -410,7 +414,9 @@ def test_go2_non_raw_encoder_configs_keep_encoder_architecture():
     (mlp_encoder_height_only_cfg(), "go2_velocity_encoder_mlp", "mlp"),
     (mlp_encoder_with_state_cfg(), "go2_velocity_encoder_mlp_state", "mlp"),
     (conv1d_encoder_cfg(), "go2_velocity_encoder_conv1d", "conv1d"),
+    (conv1d_state_encoder_cfg(), "go2_velocity_encoder_conv1d_state", "conv1d"),
     (conv2d_encoder_cfg(), "go2_velocity_encoder_conv2d", "conv2d"),
+    (conv2d_state_encoder_cfg(), "go2_velocity_encoder_conv2d_state", "conv2d"),
   )
 
   for cfg, experiment_name, encoder_type in expected:
@@ -418,3 +424,24 @@ def test_go2_non_raw_encoder_configs_keep_encoder_architecture():
     assert cfg.actor.class_name == ENCODER_MODEL
     assert cfg.actor.observation_encoder_cfg is not None
     assert cfg.actor.observation_encoder_cfg["type"] == encoder_type
+
+
+def test_go2_conv_encoder_configs_split_height_only_and_state_context():
+  height_only_cfgs = (conv1d_encoder_cfg(), conv2d_encoder_cfg())
+  state_cfgs = (conv1d_state_encoder_cfg(), conv2d_state_encoder_cfg())
+
+  for cfg in height_only_cfgs:
+    enc_cfg = cfg.actor.observation_encoder_cfg
+    assert enc_cfg is not None
+    assert enc_cfg["encoder_input_keys"] == ["height_scan"]
+    assert enc_cfg.get("context_keys", []) == []
+
+  for cfg in state_cfgs:
+    enc_cfg = cfg.actor.observation_encoder_cfg
+    assert enc_cfg is not None
+    assert enc_cfg["encoder_input_keys"] == [
+      "height_scan",
+      "command",
+      "projected_gravity",
+    ]
+    assert enc_cfg["context_keys"] == ["command", "projected_gravity"]

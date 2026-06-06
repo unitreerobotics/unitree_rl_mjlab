@@ -189,11 +189,13 @@ See `src/tasks/velocity/config/go2/encoder_ablation_rl_cfg.py` for ready-made
 builders and `__init__.py` for the registered tasks:
 
 ```
-Unitree-Go2-Rough-Encoder-Raw        # identity
-Unitree-Go2-Rough-Encoder-MLP        # mlp, height only
-Unitree-Go2-Rough-Encoder-MLPState   # mlp, height + command + gravity
-Unitree-Go2-Rough-Encoder-Conv1d
-Unitree-Go2-Rough-Encoder-Conv2d
+Unitree-Go2-Rough-Encoder-Raw          # identity
+Unitree-Go2-Rough-Encoder-MLP          # mlp, height only
+Unitree-Go2-Rough-Encoder-MLPState     # mlp, height + command + gravity
+Unitree-Go2-Rough-Encoder-Conv1d       # conv1d, height only
+Unitree-Go2-Rough-Encoder-Conv1dState  # conv1d, height + command + gravity
+Unitree-Go2-Rough-Encoder-Conv2d       # conv2d, height only
+Unitree-Go2-Rough-Encoder-Conv2dState  # conv2d, height + command + gravity
 ```
 
 ## Actor and critic are independent

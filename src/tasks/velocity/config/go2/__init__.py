@@ -4,7 +4,9 @@ from src.tasks.velocity.rl import VelocityOnPolicyRunner
 
 from .encoder_ablation_rl_cfg import (
   conv1d_encoder_cfg,
+  conv1d_state_encoder_cfg,
   conv2d_encoder_cfg,
+  conv2d_state_encoder_cfg,
   mlp_encoder_height_only_cfg,
   mlp_encoder_with_state_cfg,
   pretrained_ae_encoder_cfg,
@@ -86,7 +88,9 @@ for _suffix, _cfg_fn in (
   ("MLP", mlp_encoder_height_only_cfg),
   ("MLPState", mlp_encoder_with_state_cfg),
   ("Conv1d", conv1d_encoder_cfg),
+  ("Conv1dState", conv1d_state_encoder_cfg),
   ("Conv2d", conv2d_encoder_cfg),
+  ("Conv2dState", conv2d_state_encoder_cfg),
   ("AE", pretrained_ae_encoder_cfg),
 ):
   register_mjlab_task(

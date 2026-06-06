@@ -57,12 +57,38 @@ def test_go2_encoder_pipeline_splits_encoder_and_passthrough():
   assert spec.observations["last_action"].dim == 12
 
 
-def test_go2_conv_pipeline_preserves_encoder_details():
+def test_go2_conv_pipeline_is_height_only_by_default():
   _requires_mjlab()
   spec = load_task_pipeline("Unitree-Go2-Rough-Encoder-Conv2d")
 
   assert spec.actor is not None
   assert spec.actor.encoder_type == "conv2d"
+  assert spec.actor.encoder_input_keys == ["height_scan"]
+  assert spec.actor.passthrough_keys == [
+    "command",
+    "projected_gravity",
+    "proprio",
+    "last_action",
+  ]
+  enc_cfg = spec.actor.observation_encoder_cfg
+  assert enc_cfg is not None
+  assert enc_cfg["primary_key"] == "height_scan"
+  assert enc_cfg.get("context_keys", []) == []
+  assert enc_cfg["input_hw"] == [17, 11]
+  assert enc_cfg["latent_dim"] == 32
+
+
+def test_go2_conv_state_pipeline_preserves_encoder_context():
+  _requires_mjlab()
+  spec = load_task_pipeline("Unitree-Go2-Rough-Encoder-Conv2dState")
+
+  assert spec.actor is not None
+  assert spec.actor.encoder_type == "conv2d"
+  assert spec.actor.encoder_input_keys == [
+    "height_scan",
+    "command",
+    "projected_gravity",
+  ]
   enc_cfg = spec.actor.observation_encoder_cfg
   assert enc_cfg is not None
   assert enc_cfg["primary_key"] == "height_scan"
