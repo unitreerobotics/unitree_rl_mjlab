@@ -9,9 +9,13 @@ Run with:
 
 from __future__ import annotations
 
+import argparse
+import copy
 import dataclasses
+import importlib
 import re
 import time
+from collections.abc import Callable
 from typing import Any, List, TypedDict
 
 import mujoco
@@ -74,8 +78,146 @@ PARAM_HINTS = {
   "stone_height_variation": (0.0, 1.0, 0.005),
 }
 
+TERRAIN_SOURCE_BUILTIN = "Built-in Presets"
+TERRAIN_SOURCE_EVALUATION = "Evaluation Terrains"
+TERRAIN_SOURCE_ENVIRONMENT = "Environment Terrains"
+TERRAIN_SOURCES = (
+  TERRAIN_SOURCE_BUILTIN,
+  TERRAIN_SOURCE_EVALUATION,
+  TERRAIN_SOURCE_ENVIRONMENT,
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class TerrainViewerOption:
+  name: str
+  source: str
+  build_generator: Callable[[int | None], TerrainGeneratorCfg]
+  description: str = ""
+
+
+def _clone_generator_with_seed(
+  generator_cfg: TerrainGeneratorCfg, seed: int | None
+) -> TerrainGeneratorCfg:
+  cfg = copy.deepcopy(generator_cfg)
+  cfg.seed = seed
+  return cfg
+
+
+def _eval_terrain_names(terrains_module: Any) -> tuple[str, ...]:
+  supported = getattr(terrains_module, "SUPPORTED_EVAL_TERRAINS", None)
+  if supported:
+    return tuple(str(name) for name in supported)
+
+  names = []
+  for name in (
+    "rough_curriculum_corridor",
+    "perlin_noise_corridor",
+    "random_spread_boxes_corridor",
+  ):
+    if getattr(terrains_module, f"make_{name}_cfg", None) is not None:
+      names.append(name)
+  return tuple(names)
+
+
+def _build_eval_terrain_cfg(
+  terrains_module: Any, terrain_name: str, seed: int | None
+) -> TerrainGeneratorCfg:
+  make_eval_terrain = getattr(terrains_module, "make_eval_terrain_cfg", None)
+  if make_eval_terrain is not None:
+    result = make_eval_terrain(terrain_name, seed=seed)
+    return result[0] if isinstance(result, tuple) else result
+
+  make_terrain = getattr(terrains_module, f"make_{terrain_name}_cfg", None)
+  if make_terrain is None:
+    raise ValueError(f"Evaluation terrain {terrain_name!r} is not available.")
+  return make_terrain(seed=seed)
+
+
+def discover_evaluation_terrain_options() -> dict[str, TerrainViewerOption]:
+  try:
+    terrains_module = importlib.import_module("src.tasks.velocity.evaluation.terrains")
+  except Exception:
+    return {}
+
+  options: dict[str, TerrainViewerOption] = {}
+  for terrain_name in _eval_terrain_names(terrains_module):
+    options[terrain_name] = TerrainViewerOption(
+      name=terrain_name,
+      source=TERRAIN_SOURCE_EVALUATION,
+      build_generator=lambda seed, terrain_name=terrain_name: _build_eval_terrain_cfg(
+        terrains_module, terrain_name, seed
+      ),
+      description="Evaluation terrain used by tools/evaluate_policy.py.",
+    )
+  return options
+
+
+def _import_optional_task_packages(package_names: tuple[str, ...]) -> None:
+  for package_name in package_names:
+    try:
+      importlib.import_module(package_name)
+    except Exception:
+      continue
+
+
+def _terrain_generator_from_env_cfg(env_cfg: Any) -> TerrainGeneratorCfg | None:
+  scene = getattr(env_cfg, "scene", None)
+  terrain = getattr(scene, "terrain", None)
+  if terrain is None:
+    return None
+  if getattr(terrain, "terrain_type", None) != "generator":
+    return None
+  terrain_generator = getattr(terrain, "terrain_generator", None)
+  if terrain_generator is None:
+    return None
+  return terrain_generator
+
+
+def _build_environment_terrain_generator(
+  task_id: str, seed: int | None
+) -> TerrainGeneratorCfg:
+  from mjlab.tasks.registry import load_env_cfg
+
+  env_cfg = load_env_cfg(task_id, play=False)
+  terrain_generator = _terrain_generator_from_env_cfg(env_cfg)
+  if terrain_generator is None:
+    raise ValueError(f"Task {task_id!r} does not define a generator terrain.")
+  return _clone_generator_with_seed(terrain_generator, seed)
+
+
+def discover_environment_terrain_options(
+  import_package_names: tuple[str, ...] = ("mjlab.tasks", "src.tasks"),
+) -> dict[str, TerrainViewerOption]:
+  _import_optional_task_packages(import_package_names)
+
+  from mjlab.tasks.registry import list_tasks, load_env_cfg
+
+  options: dict[str, TerrainViewerOption] = {}
+  for task_id in list_tasks():
+    try:
+      env_cfg = load_env_cfg(task_id, play=False)
+    except Exception:
+      continue
+    if _terrain_generator_from_env_cfg(env_cfg) is None:
+      continue
+    options[task_id] = TerrainViewerOption(
+      name=task_id,
+      source=TERRAIN_SOURCE_ENVIRONMENT,
+      build_generator=lambda seed, task_id=task_id: _build_environment_terrain_generator(
+        task_id, seed
+      ),
+      description="Registered task environment terrain.",
+    )
+  return options
+
+
+def builtin_terrain_option_names() -> list[str]:
+  return ["All Terrains"] + list(ALL_TERRAINS_CFG.sub_terrains.keys())
+
 
 class _AppState(TypedDict):
+  terrain_source: str
   preset_name: str
   robot_name: str
   seed: int
@@ -88,16 +230,62 @@ class _AppState(TypedDict):
   terrain_origins: np.ndarray | None
 
 
+def parse_args() -> argparse.Namespace:
+  parser = argparse.ArgumentParser(
+    description="Interactive terrain visualizer using Viser."
+  )
+  parser.add_argument("--host", default="0.0.0.0", help="Host for the Viser server.")
+  parser.add_argument(
+    "--port", type=int, default=8080, help="Port for the Viser server."
+  )
+  parser.add_argument(
+    "--no-robots",
+    action="store_true",
+    help="Disable robot selection and keep the viewer terrain-only.",
+  )
+  parser.add_argument(
+    "--terrain-source",
+    choices=TERRAIN_SOURCES,
+    default=TERRAIN_SOURCE_BUILTIN,
+    help="Initial terrain source shown by the viewer.",
+  )
+  parser.add_argument(
+    "--terrain",
+    default=None,
+    help="Initial terrain option name for the selected terrain source.",
+  )
+  return parser.parse_args()
+
+
 def main():
-  server = viser.ViserServer()
+  args = parse_args()
+  server = viser.ViserServer(host=args.host, port=args.port)
 
   # Load available terrains from config.
   available_presets = ALL_TERRAINS_CFG.sub_terrains
-  preset_names = ["All Terrains"] + list(available_presets.keys())
+  preset_names = builtin_terrain_option_names()
+  evaluation_options = discover_evaluation_terrain_options()
+  environment_options = discover_environment_terrain_options()
+
+  def get_source_option_names(source: str) -> list[str]:
+    if source == TERRAIN_SOURCE_BUILTIN:
+      return preset_names
+    if source == TERRAIN_SOURCE_EVALUATION:
+      return list(evaluation_options.keys())
+    if source == TERRAIN_SOURCE_ENVIRONMENT:
+      return list(environment_options.keys())
+    return []
+
+  initial_source = args.terrain_source
+  if not get_source_option_names(initial_source):
+    initial_source = TERRAIN_SOURCE_BUILTIN
+  initial_names = get_source_option_names(initial_source)
+  initial_terrain = args.terrain if args.terrain in initial_names else initial_names[0]
 
   # State management.
   state: _AppState = {
-    "preset_name": preset_names[0],
+    "terrain_source": initial_source,
+    "preset_name": initial_terrain,
     "robot_name": "None",
     "seed": 42,
     "size": ALL_TERRAINS_CFG.size,
@@ -112,6 +300,66 @@ def main():
   # Handle for the terrain mesh in the scene.
   terrain_handle: viser.SceneNodeHandle | None = None
 
+  def build_builtin_generator_cfg() -> TerrainGeneratorCfg:
+    if state["preset_name"] == "All Terrains":
+      # Create a copy with equal proportions to ensure all are shown once.
+      sub_terrains = {}
+      for name, cfg in available_presets.items():
+        new_cfg = dataclasses.replace(cfg, proportion=1.0)
+        sub_terrains[name] = new_cfg
+      num_cols = len(sub_terrains)
+      num_rows = state["rows"]
+    else:
+      selected_instance = available_presets[state["preset_name"]]
+      terrain_type = type(selected_instance)
+
+      # Instantiate sub-terrain config with current GUI state.
+      sub_cfg_params = {}
+      for field in dataclasses.fields(terrain_type):
+        if field.name in ["proportion", "size", "flat_patch_sampling"]:
+          sub_cfg_params[field.name] = getattr(selected_instance, field.name)
+          continue
+
+        if "range" in field.name and isinstance(
+          getattr(selected_instance, field.name), (tuple, list)
+        ):
+          if field.name + "_min" in state["params"]:
+            sub_cfg_params[field.name] = (
+              state["params"][field.name + "_min"],
+              state["params"][field.name + "_max"],
+            )
+          else:
+            sub_cfg_params[field.name] = getattr(selected_instance, field.name)
+        elif field.name in state["params"]:
+          sub_cfg_params[field.name] = state["params"][field.name]
+        else:
+          sub_cfg_params[field.name] = getattr(selected_instance, field.name)
+
+      sub_cfg = terrain_type(**sub_cfg_params)
+      num_rows = state["rows"]
+      num_cols = state["cols"]
+      sub_terrains = {state["preset_name"]: sub_cfg}
+
+    return TerrainGeneratorCfg(
+      seed=state["seed"],
+      size=state["size"],
+      num_rows=num_rows,
+      num_cols=num_cols,
+      curriculum=True,
+      difficulty_range=state["difficulty_range"],
+      sub_terrains=sub_terrains,
+      add_lights=True,
+    )
+
+  def build_selected_generator_cfg() -> TerrainGeneratorCfg:
+    if state["terrain_source"] == TERRAIN_SOURCE_BUILTIN:
+      return build_builtin_generator_cfg()
+    if state["terrain_source"] == TERRAIN_SOURCE_EVALUATION:
+      return evaluation_options[state["preset_name"]].build_generator(state["seed"])
+    if state["terrain_source"] == TERRAIN_SOURCE_ENVIRONMENT:
+      return environment_options[state["preset_name"]].build_generator(state["seed"])
+    raise ValueError(f"Unknown terrain source: {state['terrain_source']}")
+
   # GUI for statistics.
   gui_stats_folder = server.gui.add_folder("Statistics")
   with gui_stats_folder:
@@ -119,6 +367,9 @@ def main():
     polygon_count_label = server.gui.add_markdown("**Number of Polygons:** -")
 
   def update_robots():
+    if args.no_robots:
+      return
+
     # Clear old robot handles.
     for h in state["robot_handles"]:
       h.remove()
@@ -207,60 +458,18 @@ def main():
     nonlocal terrain_handle
     status_label.content = "**Status:** Generating terrain..."
 
-    if state["preset_name"] == "All Terrains":
-      # Create a copy with equal proportions to ensure all are shown once.
-      sub_terrains = {}
-      for name, cfg in available_presets.items():
-        new_cfg = dataclasses.replace(cfg, proportion=1.0)
-        sub_terrains[name] = new_cfg
-      num_cols = len(sub_terrains)
-      num_rows = state["rows"]
-    else:
-      selected_instance = available_presets[state["preset_name"]]
-      terrain_type = type(selected_instance)
-
-      # Instantiate sub-terrain config with current GUI state.
-      sub_cfg_params = {}
-      for field in dataclasses.fields(terrain_type):
-        if field.name in ["proportion", "size", "flat_patch_sampling"]:
-          sub_cfg_params[field.name] = getattr(selected_instance, field.name)
-          continue
-
-        if "range" in field.name and isinstance(
-          getattr(selected_instance, field.name), (tuple, list)
-        ):
-          if field.name + "_min" in state["params"]:
-            sub_cfg_params[field.name] = (
-              state["params"][field.name + "_min"],
-              state["params"][field.name + "_max"],
-            )
-          else:
-            sub_cfg_params[field.name] = getattr(selected_instance, field.name)
-        elif field.name in state["params"]:
-          sub_cfg_params[field.name] = state["params"][field.name]
-        else:
-          sub_cfg_params[field.name] = getattr(selected_instance, field.name)
-
-      try:
-        sub_cfg = terrain_type(**sub_cfg_params)
-      except Exception as e:
-        print(f"Error creating config: {e}")
-        return
-
-      num_rows = state["rows"]
-      num_cols = state["cols"]
-      sub_terrains = {state["preset_name"]: sub_cfg}
-
-    generator_cfg = TerrainGeneratorCfg(
-      seed=state["seed"],
-      size=state["size"],
-      num_rows=num_rows,
-      num_cols=num_cols,
-      curriculum=True,
-      difficulty_range=state["difficulty_range"],
-      sub_terrains=sub_terrains,
-      add_lights=True,
-    )
+    try:
+      generator_cfg = build_selected_generator_cfg()
+    except Exception as e:
+      status_label.content = f"**Status:** Error: {e}"
+      state["terrain_origins"] = None
+      if terrain_handle is not None:
+        terrain_handle.remove()
+        terrain_handle = None
+      if not args.no_robots:
+        update_robots()
+      print(f"Error creating terrain config: {e}")
+      return
 
     generator = TerrainGenerator(generator_cfg)
     spec = mujoco.MjSpec()
@@ -304,7 +513,8 @@ def main():
     )
 
     # Trigger robot update.
-    update_robots()
+    if not args.no_robots:
+      update_robots()
 
   # GUI Setup.
   gui_params_folder = server.gui.add_folder("Terrain Parameters")
@@ -315,6 +525,32 @@ def main():
     for control in param_controls:
       control.remove()
     param_controls.clear()
+
+    if state["terrain_source"] != TERRAIN_SOURCE_BUILTIN:
+      option_names = get_source_option_names(state["terrain_source"])
+      if not option_names:
+        with gui_params_folder:
+          md = server.gui.add_markdown(
+            f"_No {state['terrain_source'].lower()} are available in this runtime._"
+          )
+          param_controls.append(md)
+        return
+
+      generator_cfg = build_selected_generator_cfg()
+      with gui_params_folder:
+        md = server.gui.add_markdown(
+          "\n".join(
+            [
+              f"**Source:** {state['terrain_source']}",
+              f"**Terrain:** `{state['preset_name']}`",
+              f"**Rows x Columns:** {generator_cfg.num_rows} x {generator_cfg.num_cols}",
+              f"**Patch Size:** {generator_cfg.size[0]:.2f} x {generator_cfg.size[1]:.2f} m",
+              "_Parameters are resolved from the selected terrain source._",
+            ]
+          )
+        )
+        param_controls.append(md)
+      return
 
     if state["preset_name"] == "All Terrains":
       with gui_params_folder:
@@ -462,15 +698,50 @@ def main():
             pass
 
   # Global Controls.
-  with server.gui.add_folder("Global Settings"):
-    preset_select = server.gui.add_dropdown(
-      "Preset", options=preset_names, initial_value=state["preset_name"]
+  global_settings_folder = server.gui.add_folder("Global Settings")
+  terrain_select_controls: List[Any] = []
+
+  def rebuild_terrain_select():
+    for control in terrain_select_controls:
+      control.remove()
+    terrain_select_controls.clear()
+
+    option_names = get_source_option_names(state["terrain_source"])
+    if state["preset_name"] not in option_names:
+      state["preset_name"] = option_names[0] if option_names else ""
+
+    with global_settings_folder:
+      if option_names:
+        terrain_select = server.gui.add_dropdown(
+          "Terrain", options=option_names, initial_value=state["preset_name"]
+        )
+
+        @terrain_select.on_update
+        def _(event):
+          state["preset_name"] = event.target.value
+          state["params"] = {}  # Clear local overrides for new terrain.
+          rebuild_gui()
+          update_terrain()
+
+        terrain_select_controls.append(terrain_select)
+      else:
+        md = server.gui.add_markdown(
+          f"_No options found for {state['terrain_source']}._"
+        )
+        terrain_select_controls.append(md)
+
+  with global_settings_folder:
+    source_select = server.gui.add_dropdown(
+      "Terrain Source",
+      options=list(TERRAIN_SOURCES),
+      initial_value=state["terrain_source"],
     )
 
-    @preset_select.on_update
+    @source_select.on_update
     def _(event):
-      state["preset_name"] = event.target.value
-      state["params"] = {}  # Clear local overrides for new preset.
+      state["terrain_source"] = event.target.value
+      state["params"] = {}  # Clear local overrides for new source.
+      rebuild_terrain_select()
       rebuild_gui()
       update_terrain()
 
@@ -481,14 +752,17 @@ def main():
       state["seed"] = int(event.target.value)
       update_terrain()
 
-    robot_select = server.gui.add_dropdown(
-      "Robot", options=list(ROBOT_CFG_GETTERS.keys()), initial_value=state["robot_name"]
-    )
+    if not args.no_robots:
+      robot_select = server.gui.add_dropdown(
+        "Robot",
+        options=list(ROBOT_CFG_GETTERS.keys()),
+        initial_value=state["robot_name"],
+      )
 
-    @robot_select.on_update
-    def _(event):
-      state["robot_name"] = event.target.value
-      update_robots()
+      @robot_select.on_update
+      def _(event):
+        state["robot_name"] = event.target.value
+        update_robots()
 
     btn_randomize = server.gui.add_button("Randomize Seed")
 
@@ -508,6 +782,7 @@ def main():
         client.camera.look_at = (0, 0, 0)
 
   # Initialize.
+  rebuild_terrain_select()
   rebuild_gui()
   update_terrain()
 

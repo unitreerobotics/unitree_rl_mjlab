@@ -8,6 +8,7 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import shlex
 import sys
@@ -30,6 +31,7 @@ from scanner import Run, checkpoint_iter, scan_runs  # noqa: E402
 REPO_ROOT = _HERE.parents[1]
 DEFAULT_LOGS_ROOT = REPO_ROOT / "logs" / "rsl_rl"
 CONFIG_PATH = _HERE / ".columns.json"
+_TERRAIN_VIEWER_SCRIPT = REPO_ROOT / "scripts" / "visualize_terrain.py"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -426,6 +428,7 @@ _PLAY_PROCS_KEY = "play_processes"
 _TB_PROC_KEY = "tensorboard_process"
 _TB_MESSAGE_KEY = "tensorboard_message"
 _LAST_TB_RUN_URL_KEY = "last_tensorboard_run_url"
+_TERRAIN_PROC_KEY = "terrain_viewer_process"
 
 _ATTRIBUTION_METHODS = (
     "integrated_gradients",
@@ -446,6 +449,36 @@ def _go2_task_ids() -> list[str]:
         return ["Unitree-Go2-Test"]
     tasks = [task for task in list_tasks() if task.startswith("Unitree-Go2-")]
     return tasks or ["Unitree-Go2-Test"]
+
+
+def _load_terrain_viewer_module():
+    spec = importlib.util.spec_from_file_location(
+        "unitree_train_log_terrain_viewer", _TERRAIN_VIEWER_SCRIPT
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {_TERRAIN_VIEWER_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@st.cache_data(show_spinner=False)
+def _terrain_viewer_options() -> tuple[dict[str, list[str]], str | None]:
+    try:
+        module = _load_terrain_viewer_module()
+    except Exception as exc:
+        return {"Built-in Presets": ["All Terrains"]}, str(exc)
+
+    source_builtin = getattr(module, "TERRAIN_SOURCE_BUILTIN", "Built-in Presets")
+    source_eval = getattr(module, "TERRAIN_SOURCE_EVALUATION", "Evaluation Terrains")
+    source_env = getattr(module, "TERRAIN_SOURCE_ENVIRONMENT", "Environment Terrains")
+    options: dict[str, list[str]] = {
+        source_builtin: list(module.builtin_terrain_option_names()),
+        source_eval: list(module.discover_evaluation_terrain_options().keys()),
+        source_env: list(module.discover_environment_terrain_options().keys()),
+    }
+    return options, None
 
 
 def _default_index(options: list[str], preferred: str) -> int:
@@ -521,6 +554,46 @@ def _start_play_process(
     return proc
 
 
+def _start_terrain_viewer(
+    args: argparse.Namespace,
+    *,
+    terrain_source: str,
+    terrain_name: str,
+) -> proc_mgr.ManagedProcess:
+    existing = st.session_state.get(_TERRAIN_PROC_KEY)
+    if existing is not None and existing.is_running:
+        return existing
+
+    port = proc_mgr.find_free_port(args.viewer_port_start, args.viewer_port_end)
+    url = f"http://{args.viewer_url_host}:{port}"
+    command = [
+        sys.executable,
+        "scripts/visualize_terrain.py",
+        "--port",
+        str(port),
+        "--no-robots",
+        "--terrain-source",
+        terrain_source,
+        "--terrain",
+        terrain_name,
+    ]
+    proc = proc_mgr.start_process(
+        label=f"terrain_viewer_{terrain_source}_{terrain_name}",
+        command=command,
+        cwd=REPO_ROOT,
+        url=url,
+    )
+    proc_mgr.announce_url_when_listening(
+        proc=proc,
+        host="127.0.0.1",
+        port=port,
+        url=f"http://localhost:{port}",
+        label="Train Log Manager Terrain viewer",
+    )
+    st.session_state[_TERRAIN_PROC_KEY] = proc
+    return proc
+
+
 def _ensure_tensorboard(args: argparse.Namespace, tb_url: str) -> str:
     existing = st.session_state.get(_TB_PROC_KEY)
     if existing is not None and existing.is_running:
@@ -574,7 +647,7 @@ def _render_managed_process(proc: proc_mgr.ManagedProcess, *, key_prefix: str) -
     st.code(shlex.join(proc.command), language="bash")
     output = proc_mgr.read_recent_output(proc.log_path)
     if output:
-        with st.expander("Recent output", expanded=not proc.is_running):
+        with st.expander("Recent output", expanded=False):
             st.code(output)
 
 
@@ -592,16 +665,81 @@ def _render_processes() -> None:
     ]
 
     tb_proc = st.session_state.get(_TB_PROC_KEY)
-    if not procs and not external_procs and tb_proc is None:
+    terrain_proc = st.session_state.get(_TERRAIN_PROC_KEY)
+    if not procs and not external_procs and tb_proc is None and terrain_proc is None:
         return
 
-    with st.expander("Launched processes", expanded=bool(procs or external_procs)):
+    with st.expander(
+        "Launched processes",
+        expanded=bool(procs or external_procs or terrain_proc),
+    ):
         if tb_proc is not None:
             _render_managed_process(tb_proc, key_prefix="tb")
+        if terrain_proc is not None:
+            _render_managed_process(terrain_proc, key_prefix="terrain")
         for key, proc in list(procs.items()):
             _render_managed_process(proc, key_prefix=f"play_{key}")
         for proc in external_procs:
             _render_managed_process(proc, key_prefix=f"external_play_{proc.pid}")
+
+
+def _render_terrain_viewer_action(args: argparse.Namespace) -> None:
+    with st.expander("Terrain Viewer", expanded=False):
+        st.caption("Choose a terrain here, then launch it in Viser without spawning robots.")
+        existing = st.session_state.get(_TERRAIN_PROC_KEY)
+        if existing is not None and existing.is_running:
+            st.info(f"Terrain viewer is running as PID {existing.pid}.")
+            if existing.url:
+                st.link_button("Open Terrain Viewer", existing.url)
+            st.code(shlex.join(existing.command), language="bash")
+            return
+
+        options_by_source, options_error = _terrain_viewer_options()
+        if options_error:
+            st.warning(f"Could not load full terrain options: {options_error}")
+        source_options = [
+            source for source, terrain_names in options_by_source.items() if terrain_names
+        ]
+        if not source_options:
+            st.error("No terrain options are available.")
+            return
+
+        preferred_source = (
+            "Evaluation Terrains"
+            if "Evaluation Terrains" in source_options
+            else source_options[0]
+        )
+        c1, c2 = st.columns([1, 2])
+        terrain_source = c1.selectbox(
+            "Terrain source",
+            source_options,
+            index=_default_index(source_options, preferred_source),
+        )
+        terrain_names = options_by_source[terrain_source]
+        preferred_terrain = (
+            "rough_curriculum_corridor"
+            if terrain_source == "Evaluation Terrains"
+            and "rough_curriculum_corridor" in terrain_names
+            else terrain_names[0]
+        )
+        terrain_name = c2.selectbox(
+            "Terrain",
+            terrain_names,
+            index=_default_index(terrain_names, preferred_terrain),
+        )
+
+        if st.button("Launch Terrain Viewer", type="primary"):
+            try:
+                proc = _start_terrain_viewer(
+                    args, terrain_source=terrain_source, terrain_name=terrain_name
+                )
+            except Exception as exc:
+                st.error(f"Could not start terrain viewer: {exc}")
+            else:
+                st.success(f"Started terrain viewer PID {proc.pid}.")
+                if proc.url:
+                    st.link_button("Open Terrain Viewer", proc.url)
+                st.code(shlex.join(proc.command), language="bash")
 
 
 def _render_run_actions(
@@ -734,9 +872,12 @@ def main() -> None:
     st.title("Train Log Manager")
     st.caption(f"Scanning `{args.logs_root}`")
 
+    _render_terrain_viewer_action(args)
+
     runs = _cached_scan(str(args.logs_root))
     if not runs:
         st.warning(f"No runs found under {args.logs_root}.")
+        _render_processes()
         return
 
     col_l, col_r = st.columns([4, 1])
