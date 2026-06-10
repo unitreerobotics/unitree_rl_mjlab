@@ -9,10 +9,17 @@ import json
 import math
 import os
 import re
-import shutil
+import secrets
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, fields, is_dataclass
 from pathlib import Path
 from typing import Any
+
+# Render offscreen video on the GPU via EGL (mirrors scripts/train.py). Without
+# this, MuJoCo falls back to CPU software GL (llvmpipe), which makes multi-view
+# video recording over a full episode pathologically slow. Set before importing
+# mjlab so the GL backend is chosen on first context creation.
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 import mjlab
 import mjlab.entity.entity as _mjlab_entity_module
@@ -26,11 +33,11 @@ from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
 from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_runner_cls
 from mjlab.utils.os import dump_yaml
 from mjlab.utils.torch import configure_torch_backends
-from mjlab.utils.wrappers import VideoRecorder
 from mjlab.viewer import ViewerConfig
 
 from src.tasks.velocity.evaluation.logger import EvaluationRunLogger, write_summary
 from src.tasks.velocity.evaluation.pure_pursuit import PurePursuitVelocityCommandCfg
+from src.tasks.velocity.evaluation.video import MultiViewVideoRecorder
 from src.tasks.velocity.evaluation.terrains import (
   SUPPORTED_EVAL_TERRAINS,
   make_eval_terrain_cfg,
@@ -173,6 +180,37 @@ def _load_training_configs(task: str, run_dir: Path) -> tuple[Any, dict[str, Any
   return env_cfg, agent_cfg, saved_run
 
 
+def _relax_calf_contact(env_cfg: Any) -> list[str]:
+  """Allow calf contact during evaluation by excluding the calf collision geoms
+  from the sensor that drives the ``illegal_contact`` termination.
+
+  The ``illegal_contact`` term terminates on any non-foot collision-geom contact
+  above its force threshold, which counts a calf brushing rough/boxy terrain as a
+  failure. For go2 the calf geoms are ``{FR,FL,RR,RL}_calf{1,2}_collision``. This
+  mutates the env config in place (eval only) and returns the geoms added to the
+  sensor's exclude list; it warns and no-ops if the term/sensor is not found.
+  """
+  term = (env_cfg.terminations or {}).get("illegal_contact")
+  if term is None:
+    print("[EVAL] --allow-calf-contact: no 'illegal_contact' termination; skipping.")
+    return []
+  sensor_name = (getattr(term, "params", None) or {}).get("sensor_name")
+  sensors = env_cfg.scene.sensors or ()
+  sensor = next((s for s in sensors if getattr(s, "name", None) == sensor_name), None)
+  if sensor is None or not hasattr(sensor, "primary"):
+    print(
+      f"[EVAL] --allow-calf-contact: sensor {sensor_name!r} not found on scene; skipping."
+    )
+    return []
+  calf_geoms = tuple(
+    f"{leg}_calf{idx}_collision" for leg in ("FR", "FL", "RR", "RL") for idx in (1, 2)
+  )
+  existing = tuple(sensor.primary.exclude or ())
+  added = [g for g in calf_geoms if g not in existing]
+  sensor.primary.exclude = existing + tuple(added)
+  return added
+
+
 def _apply_eval_overrides(env_cfg: Any, args: argparse.Namespace) -> tuple[list[dict[str, float]], dict[str, Any]]:
   terrain_cfg, waypoints, terrain_metadata = make_eval_terrain_cfg(
     args.eval_terrain,
@@ -180,11 +218,14 @@ def _apply_eval_overrides(env_cfg: Any, args: argparse.Namespace) -> tuple[list[
   )
   waypoint_values = [[p["x"], p["y"], p["z"]] for p in waypoints]
 
-  env_cfg.scene.num_envs = 1
+  # Run every requested evaluation as a parallel env in a single GPU sim
+  # (run_id == env index). scene.num_envs auto-propagates to the terrain, so we
+  # do NOT set terrain.num_envs here. The terrain generator uses num_cols=1, so
+  # all envs share the same corridor-start origin and worlds do not collide.
+  env_cfg.scene.num_envs = args.num_runs
   env_cfg.scene.terrain.terrain_type = "generator"
   env_cfg.scene.terrain.terrain_generator = terrain_cfg
   env_cfg.scene.terrain.max_init_terrain_level = 0
-  env_cfg.scene.terrain.num_envs = 1
   env_cfg.curriculum = {}
 
   for group in env_cfg.observations.values():
@@ -219,9 +260,23 @@ def _apply_eval_overrides(env_cfg: Any, args: argparse.Namespace) -> tuple[list[
   else:
     env_cfg.episode_length_s = max(env_cfg.episode_length_s, 120.0)
 
+  if getattr(args, "allow_calf_contact", False):
+    added = _relax_calf_contact(env_cfg)
+    if added:
+      print(
+        f"[EVAL] allowing calf contact (excluded {len(added)} calf geoms from "
+        f"illegal_contact: {', '.join(added)})"
+      )
+
   env_cfg.viewer.distance = 3.5
   env_cfg.viewer.elevation = -20.0
   env_cfg.viewer.azimuth = 180.0
+  env_cfg.viewer.width = args.video_width
+  env_cfg.viewer.height = args.video_height
+  # The video renders only the env at viewer.env_idx. max_extra_envs=0 avoids
+  # rendering ghost robots, since all envs are stacked at the same origin.
+  env_cfg.viewer.env_idx = max(args.video_run, 0)
+  env_cfg.viewer.max_extra_envs = 0
   return waypoints, terrain_metadata
 
 
@@ -244,11 +299,11 @@ def _quat_to_rpy(q: np.ndarray) -> tuple[float, float, float]:
 
 def _reset_robot_to_start(env: ManagerBasedRlEnv, start_xyz: np.ndarray) -> TensorDict:
   robot = env.scene["robot"]
-  env_ids = torch.zeros(1, dtype=torch.long, device=env.device)
+  env_ids = torch.arange(env.num_envs, device=env.device)
   default_root = robot.data.default_root_state[env_ids].clone()
   default_root[:, 0] = float(start_xyz[0])
   default_root[:, 1] = float(start_xyz[1])
-  default_root[:, 2] = float(default_root[:, 2].item() + start_xyz[2])
+  default_root[:, 2] = default_root[:, 2] + float(start_xyz[2])
   default_root[:, 7:13] = 0.0
   robot.write_root_state_to_sim(default_root, env_ids=env_ids)
   if robot.is_articulated:
@@ -296,15 +351,46 @@ def _load_policy(task: str, checkpoint: Path, env: ManagerBasedRlEnv, agent_cfg:
   return policy, actual_dim, expected_dim
 
 
-def _termination_reason(env: ManagerBasedRlEnv) -> str | None:
+def _termination_reason_for_env(env: ManagerBasedRlEnv, i: int) -> str | None:
   for name in env.termination_manager.active_terms:
-    if bool(env.termination_manager.get_term(name)[0].item()):
+    if bool(env.termination_manager.get_term(name)[i].item()):
       return name
   return None
 
 
-def _contact_arrays(env: ManagerBasedRlEnv) -> dict[str, Any]:
-  arrays = {}
+def _to_numpy(value: Any) -> np.ndarray | None:
+  """One batched GPU->CPU transfer for a tensor (leading dim == num_envs)."""
+  if value is None:
+    return None
+  return value.detach().cpu().numpy()
+
+
+def _batch_step_tensors(env: ManagerBasedRlEnv, obs: TensorDict) -> dict[str, Any]:
+  """Pull all per-step state for the WHOLE batch to numpy in one pass.
+
+  Every returned value keeps its leading env dimension (N); the per-env Python
+  loop slices ``[i]`` afterwards. Each tensor is moved with exactly one
+  ``.detach().cpu().numpy()`` so the GPU->CPU transfer happens once per batch.
+  """
+  robot = env.scene["robot"]
+  command_term = env.command_manager.get_term("twist")
+  batch: dict[str, Any] = {}
+  # Root state.
+  batch["root_link_pos_w"] = _to_numpy(robot.data.root_link_pos_w)
+  batch["root_link_quat_w"] = _to_numpy(robot.data.root_link_quat_w)
+  batch["root_link_lin_vel_b"] = _to_numpy(robot.data.root_link_lin_vel_b)
+  batch["root_link_ang_vel_b"] = _to_numpy(robot.data.root_link_ang_vel_b)
+  # Command term (PurePursuit is fully vectorized over envs).
+  batch["command"] = _to_numpy(command_term.command)
+  batch["progress"] = _to_numpy(command_term.progress)
+  batch["lateral_error"] = _to_numpy(command_term.lateral_error)
+  batch["reached_goal"] = _to_numpy(command_term.reached_goal)
+  # Joints / actuators (actuator_force may be None).
+  batch["joint_pos"] = _to_numpy(robot.data.joint_pos)
+  batch["joint_vel"] = _to_numpy(robot.data.joint_vel)
+  batch["actuator_force"] = _to_numpy(getattr(robot.data, "actuator_force", None))
+  # Contact sensors (per sensor: found / force).
+  batch["contact"] = {}
   for name, sensor in getattr(env.scene, "sensors", {}).items():
     data = getattr(sensor, "data", None)
     if data is None:
@@ -312,40 +398,48 @@ def _contact_arrays(env: ManagerBasedRlEnv) -> dict[str, Any]:
     for field_name in ("found", "force"):
       value = getattr(data, field_name, None)
       if value is not None:
-        arrays[f"contact_{name}_{field_name}"] = value
-  return arrays
+        batch["contact"][f"contact_{name}_{field_name}"] = _to_numpy(value)
+  # Reward terms / actions (optional).
+  if hasattr(env.reward_manager, "_step_reward"):
+    batch["reward_terms"] = _to_numpy(env.reward_manager._step_reward)
+  if hasattr(env.action_manager, "action"):
+    batch["actions"] = _to_numpy(env.action_manager.action)
+  # Observations.
+  batch["obs"] = {f"obs_{key}": _to_numpy(obs[key]) for key in obs.keys()}
+  # Termination term buffers (current-step values, batched [N]).
+  batch["terminations"] = {
+    name: _to_numpy(env.termination_manager.get_term(name))
+    for name in env.termination_manager.active_terms
+  }
+  return batch
 
 
-def _obs_arrays(obs: TensorDict) -> dict[str, Any]:
-  return {f"obs_{key}": obs[key] for key in obs.keys()}
-
-
-def _step_row(
-  env: ManagerBasedRlEnv,
-  run_id: int,
+def _make_row(
+  *,
+  i: int,
   seed: int,
   checkpoint: Path,
   step: int,
+  step_dt: float,
   terrain_metadata: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-  robot = env.scene["robot"]
-  command_term = env.command_manager.get_term("twist")
-  base_pos = robot.data.root_link_pos_w[0].detach().cpu().numpy()
-  base_quat = robot.data.root_link_quat_w[0].detach().cpu().numpy()
+  base_pos: np.ndarray,
+  base_quat: np.ndarray,
+  base_lin_vel_b: np.ndarray,
+  base_ang_vel_b: np.ndarray,
+  command: np.ndarray,
+  progress: float,
+  lateral_error: float,
+  reached_goal: bool,
+) -> dict[str, Any]:
   roll, pitch, yaw = _quat_to_rpy(base_quat)
-  base_lin_vel_b = robot.data.root_link_lin_vel_b[0].detach().cpu().numpy()
-  base_ang_vel_b = robot.data.root_link_ang_vel_b[0].detach().cpu().numpy()
-  command = command_term.command[0].detach().cpu().numpy()
-  progress = float(command_term.progress[0].item())
   patch_length = float(terrain_metadata["patch_length"])
   patch_idx = min(int(progress / patch_length), terrain_metadata["num_patches"] - 1)
   patch = terrain_metadata["patches"][patch_idx]
-
-  row = {
-    "run_id": run_id,
+  return {
+    "run_id": i,
     "seed": seed,
     "checkpoint_path": str(checkpoint),
-    "sim_time": step * env.step_dt,
+    "sim_time": step * step_dt,
     "step": step,
     "base_x": base_pos[0],
     "base_y": base_pos[1],
@@ -369,190 +463,311 @@ def _step_row(
     "actual_speed_xy_b": float(np.linalg.norm(base_lin_vel_b[:2])),
     "velocity_tracking_error": float(np.linalg.norm(command[:2] - base_lin_vel_b[:2])),
     "yaw_rate_tracking_error": float(command[2] - base_ang_vel_b[2]),
-    "path_lateral_error": float(command_term.lateral_error[0].item()),
+    "path_lateral_error": float(lateral_error),
     "path_progress": progress,
     "terrain_patch_index": patch_idx,
     "terrain_difficulty": patch["difficulty_level"],
-    "reached_goal": bool(command_term.reached_goal[0].item()),
+    "reached_goal": reached_goal,
   }
-  arrays = {
-    "base_position_w": robot.data.root_link_pos_w,
-    "base_quat_w": robot.data.root_link_quat_w,
-    "base_lin_vel_b": robot.data.root_link_lin_vel_b,
-    "base_ang_vel_b": robot.data.root_link_ang_vel_b,
-    "command_b": command_term.command,
-    "joint_pos": robot.data.joint_pos,
-    "joint_vel": robot.data.joint_vel,
-    "actuator_force": getattr(robot.data, "actuator_force", None),
-  }
-  arrays.update(_contact_arrays(env))
-  if hasattr(env.reward_manager, "_step_reward"):
-    arrays["reward_terms"] = env.reward_manager._step_reward
-  if hasattr(env.action_manager, "action"):
-    arrays["actions"] = env.action_manager.action
-  return row, arrays
 
 
-def _run_one(
+def _run_batch(
   *,
   base_env: ManagerBasedRlEnv,
   policy: Any,
   args: argparse.Namespace,
   checkpoint: Path,
   output_dir: Path,
-  run_id: int,
   terrain_metadata: dict[str, Any],
   waypoints: list[dict[str, float]],
-) -> dict[str, Any]:
-  seed = (args.seed or 0) + run_id
-  run_dir = output_dir / f"run_{run_id:03d}"
-  logger = EvaluationRunLogger(run_dir, run_id=run_id, seed=seed, checkpoint=checkpoint)
+) -> list[dict[str, Any]]:
+  """Run all ``args.num_runs`` evaluations as parallel envs in one GPU sim.
+
+  Each env index ``i`` corresponds to ``run_id == i``. The GPU steps every env
+  for nearly the per-step cost of one, so this is a large speedup over the old
+  sequential driver. Finished envs keep simulating but are ignored for logging.
+
+  NOTE: mjlab seeding is global, so all envs share a single base seed
+  (``args.seed``) and one RNG stream. Trajectories will therefore not be
+  bit-identical to the old per-run-reseed sequential mode, but metric semantics
+  are unchanged. The terrain layout is still seeded from ``args.seed``, so
+  ``--seed`` reproduces a whole evaluation. For ``--num-runs 1`` the behavior
+  matches today (base seed + 0 == base).
+  """
+  N = args.num_runs
+  seed = args.seed or 0
   base_env.seed(seed)
 
-  interaction_env: Any = base_env
-  video_recorder: VideoRecorder | None = None
-  if args.video_run == run_id:
-    video_recorder = VideoRecorder(
-      base_env,
-      video_folder=run_dir,
-      step_trigger=lambda step: step == 0,
-      video_length=None,
-      name_prefix="video",
-      disable_logger=True,
+  loggers = [
+    EvaluationRunLogger(
+      output_dir / f"run_{i:03d}", run_id=i, seed=seed, checkpoint=checkpoint
     )
-    interaction_env = video_recorder
+    for i in range(N)
+  ]
+
+  # Video fps / capture cadence (computed in the caller, not in video.py).
+  render_fps = round(1.0 / base_env.step_dt)  # control rate, ~50 Hz
+  video_fps = args.video_fps if args.video_fps else render_fps
+  capture_every = max(1, round(render_fps / video_fps))
+  effective_fps = render_fps / capture_every
+
+  # One video recorder for the whole batch; renders only viewer.env_idx.
+  recorder: MultiViewVideoRecorder | None = None
+  record_video = 0 <= args.video_run < N
+  if record_video:
+    video_run_dir = output_dir / f"run_{args.video_run:03d}"
+    recorder = MultiViewVideoRecorder(
+      base_env, video_run_dir, name_prefix="video", fps=effective_fps
+    )
 
   # The reset below (RslRlVecEnvWrapper.__init__ calls env.reset()) must run under
   # inference_mode: the rollout loop updates sensor history buffers in-place via
   # .roll() inside inference_mode, which turns them into inference tensors. Resetting
-  # them outside inference_mode on subsequent runs raises "Inplace update to inference
-  # tensor outside InferenceMode is not allowed".
+  # them outside inference_mode raises "Inplace update to inference tensor outside
+  # InferenceMode is not allowed".
   with torch.inference_mode():
-    vec_env = RslRlVecEnvWrapper(interaction_env, clip_actions=args.clip_actions)
-    obs = _reset_robot_to_start(base_env, np.array([waypoints[0]["x"], waypoints[0]["y"], waypoints[0]["z"]]))
-  initial_pos = base_env.scene["robot"].data.root_link_pos_w[0].detach().cpu().numpy()
-  initial_quat = base_env.scene["robot"].data.root_link_quat_w[0].detach().cpu().numpy()
-  _, _, initial_yaw = _quat_to_rpy(initial_quat)
+    vec_env = RslRlVecEnvWrapper(base_env, clip_actions=args.clip_actions)
+    obs = _reset_robot_to_start(
+      base_env,
+      np.array([waypoints[0]["x"], waypoints[0]["y"], waypoints[0]["z"]]),
+    )
+
+  robot = base_env.scene["robot"]
+  initial_pos = robot.data.root_link_pos_w.detach().cpu().numpy()  # [N, 3]
+  initial_quat = robot.data.root_link_quat_w.detach().cpu().numpy()  # [N, 4]
+  initial_yaw = np.array(
+    [_quat_to_rpy(initial_quat[i])[2] for i in range(N)], dtype=np.float64
+  )  # [N]
 
   max_steps = args.max_steps or base_env.max_episode_length
   terminal_interval = max(0, int(args.terminal_log_interval))
+  stuck_steps = 0
+  if args.stuck_time > 0.0:
+    stuck_steps = max(1, int(math.ceil(args.stuck_time / base_env.step_dt)))
   total_length = float(terrain_metadata["total_path_length"])
   print(
-    f"[EVAL] run {run_id + 1}/ {args.num_runs} start "
-    f"seed={seed} max_steps={max_steps} path={total_length:.2f}m "
-    f"video={args.video_run == run_id}"
+    f"[EVAL] batch start envs={N} seed={seed} max_steps={max_steps} "
+    f"path={total_length:.2f}m video_run={args.video_run if record_video else None} "
+    f"capture_every={capture_every} effective_fps={effective_fps:.2f}"
   )
-  termination_reason = "max_steps"
-  rows_for_summary = []
-  done = False
-  success = False
+
+  # Per-env python/numpy state.
+  active = np.ones(N, dtype=bool)
+  termination_reason = ["max_steps"] * N
+  success = np.zeros(N, dtype=bool)
+  done = np.zeros(N, dtype=bool)
+  stuck = np.zeros(N, dtype=bool)
+  best_progress = np.zeros(N, dtype=np.float64)
+  last_progress_step = np.zeros(N, dtype=np.int64)
+  rows_for_summary: list[list[dict[str, Any]]] = [[] for _ in range(N)]
 
   with torch.inference_mode():
     for step in range(max_steps):
       action = policy(obs.to(args.device))
       obs, _reward, dones, _extras = vec_env.step(action.to(vec_env.device))
-      row, arrays = _step_row(base_env, run_id, seed, checkpoint, step, terrain_metadata)
-      rows_for_summary.append(row)
-      arrays.update(_obs_arrays(obs))
-      base_pos = arrays["base_position_w"][0].detach().cpu().numpy()
-      rel_pos = base_pos - initial_pos
-      c, s = math.cos(-initial_yaw), math.sin(-initial_yaw)
-      rel_pos_initial = np.array(
-        [c * rel_pos[0] - s * rel_pos[1], s * rel_pos[0] + c * rel_pos[1], rel_pos[2]],
-        dtype=np.float32,
-      )
-      arrays["base_position_initial_frame"] = torch.tensor(
-        rel_pos_initial,
-        dtype=torch.float,
-        device=base_env.device,
-      ).unsqueeze(0)
-      logger.log_step(row, arrays)
 
-      done_flag = bool(dones[0].item())
-      if terminal_interval > 0 and (
-        step == 0 or (step + 1) % terminal_interval == 0 or row["reached_goal"] or done_flag
+      if (
+        recorder is not None
+        and step % capture_every == 0
+        and active[args.video_run]
       ):
-        rate = np.clip(float(row["path_progress"]) / max(total_length, 1e-9), 0.0, 1.0)
-        cmd_speed = math.hypot(float(row["cmd_lin_vel_x_b"]), float(row["cmd_lin_vel_y_b"]))
-        print(
-          f"[EVAL] run {run_id + 1}/ {args.num_runs} "
-          f"step={step + 1}/{max_steps} t={(step + 1) * base_env.step_dt:.1f}s "
-          f"progress={float(row["path_progress"]):.2f}/{total_length:.2f}m "
-          f"rate={rate:.3f} patch={int(row["terrain_patch_index"])} "
-          f"diff={float(row["terrain_difficulty"]):.2f} "
-          f"lat={float(row["path_lateral_error"]):.2f}m "
-          f"speed={float(row["actual_speed_xy_b"]):.2f} cmd={cmd_speed:.2f} "
-          f"v_err={float(row["velocity_tracking_error"]):.2f}"
+        recorder.capture()
+
+      batch = _batch_step_tensors(base_env, obs)
+      dones_np = dones.detach().cpu().numpy().astype(bool)
+
+      command = batch["command"]
+      progress = batch["progress"]
+      lateral_error = batch["lateral_error"]
+      reached_goal = batch["reached_goal"].astype(bool)
+      base_pos_b = batch["root_link_pos_w"]
+      base_quat_b = batch["root_link_quat_w"]
+      lin_vel_b = batch["root_link_lin_vel_b"]
+      ang_vel_b = batch["root_link_ang_vel_b"]
+
+      for i in range(N):
+        if not active[i]:
+          continue
+        row = _make_row(
+          i=i,
+          seed=seed,
+          checkpoint=checkpoint,
+          step=step,
+          step_dt=base_env.step_dt,
+          terrain_metadata=terrain_metadata,
+          base_pos=base_pos_b[i],
+          base_quat=base_quat_b[i],
+          base_lin_vel_b=lin_vel_b[i],
+          base_ang_vel_b=ang_vel_b[i],
+          command=command[i],
+          progress=float(progress[i]),
+          lateral_error=float(lateral_error[i]),
+          reached_goal=bool(reached_goal[i]),
+        )
+        rows_for_summary[i].append(row)
+
+        arrays: dict[str, Any] = {
+          "base_position_w": base_pos_b[i],
+          "base_quat_w": base_quat_b[i],
+          "base_lin_vel_b": lin_vel_b[i],
+          "base_ang_vel_b": ang_vel_b[i],
+          "command_b": command[i],
+          "joint_pos": batch["joint_pos"][i],
+          "joint_vel": batch["joint_vel"][i],
+        }
+        if batch["actuator_force"] is not None:
+          arrays["actuator_force"] = batch["actuator_force"][i]
+        for key, value in batch["contact"].items():
+          arrays[key] = value[i]
+        if "reward_terms" in batch:
+          arrays["reward_terms"] = batch["reward_terms"][i]
+        if "actions" in batch:
+          arrays["actions"] = batch["actions"][i]
+        for key, value in batch["obs"].items():
+          arrays[key] = value[i]
+
+        rel_pos = base_pos_b[i] - initial_pos[i]
+        c, s = math.cos(-initial_yaw[i]), math.sin(-initial_yaw[i])
+        arrays["base_position_initial_frame"] = np.array(
+          [
+            c * rel_pos[0] - s * rel_pos[1],
+            s * rel_pos[0] + c * rel_pos[1],
+            rel_pos[2],
+          ],
+          dtype=np.float32,
+        )
+        loggers[i].log_step(row, arrays)
+
+        progress_now = float(row["path_progress"])
+        if progress_now > best_progress[i] + args.stuck_progress_epsilon:
+          best_progress[i] = progress_now
+          last_progress_step[i] = step
+        stuck_flag = (
+          stuck_steps > 0
+          and step - last_progress_step[i] >= stuck_steps
+          and not row["reached_goal"]
         )
 
-      if row["reached_goal"]:
-        success = True
-        termination_reason = "goal_reached"
+        # Per-env finish logic (same priority as the old sequential driver).
+        if row["reached_goal"]:
+          success[i] = True
+          termination_reason[i] = "goal_reached"
+          active[i] = False
+          print(f"[EVAL] run {i} finished reason=goal_reached step={step + 1}")
+        elif bool(dones_np[i]):
+          done[i] = True
+          termination_reason[i] = _termination_reason_for_env(base_env, i) or "done"
+          active[i] = False
+          print(
+            f"[EVAL] run {i} finished reason={termination_reason[i]} step={step + 1}"
+          )
+        elif stuck_flag:
+          stuck[i] = True
+          termination_reason[i] = "stuck"
+          active[i] = False
+          print(f"[EVAL] run {i} finished reason=stuck step={step + 1}")
+
+      # Aggregate progress print over currently active envs.
+      if terminal_interval > 0 and (step == 0 or (step + 1) % terminal_interval == 0):
+        finished = int((~active).sum())
+        if active.any():
+          act = active
+          mean_progress = float(np.mean(progress[act]))
+          mean_rate = float(
+            np.mean(np.clip(progress[act] / max(total_length, 1e-9), 0.0, 1.0))
+          )
+          mean_speed = float(np.mean(np.linalg.norm(lin_vel_b[act][:, :2], axis=1)))
+        else:
+          mean_progress = mean_rate = mean_speed = 0.0
+        print(
+          f"[EVAL] step={step + 1}/{max_steps} t={(step + 1) * base_env.step_dt:.1f}s "
+          f"finished={finished}/{N} mean_progress={mean_progress:.2f}/{total_length:.2f}m "
+          f"mean_rate={mean_rate:.3f} mean_speed={mean_speed:.2f}"
+        )
+
+      if not active.any():
         break
-      if done_flag:
-        done = True
-        termination_reason = _termination_reason(base_env) or "done"
-        break
 
-  if video_recorder is not None and video_recorder.is_recording:
-    video_recorder._finish_recording()
-  if video_recorder is not None:
-    videos = sorted(run_dir.glob("video-*.mp4"))
-    if videos:
-      shutil.move(str(videos[-1]), run_dir / "video.mp4")
+  if recorder is not None:
+    written = recorder.save()
+    print(f"[EVAL] videos saved={[p.name for p in written]}")
 
-  if not rows_for_summary:
-    raise RuntimeError(f"Run {run_id} produced no rollout rows.")
+  # Build per-env summaries (same fields/order as the old sequential driver).
+  summaries: list[dict[str, Any]] = []
+  for i in range(N):
+    rows = rows_for_summary[i]
+    if not rows:
+      # Should not happen since all envs start active.
+      print(f"[EVAL] run {i} produced no rollout rows; emitting empty summary.")
+      summaries.append({"run_id": i, "seed": seed})
+      continue
+    final = rows[-1]
+    final_progress = float(final["path_progress"])
+    traversal_rate = float(np.clip(final_progress / max(total_length, 1e-9), 0.0, 1.0))
+    fall_flag = termination_reason[i] in {"fell_over", "illegal_contact"}
+    patch_pass = {}
+    for patch in terrain_metadata["patches"]:
+      idx = patch["patch_index"]
+      patch_pass[f"passed_patch_{idx:02d}"] = final_progress >= float(
+        patch["end_position"][0] - waypoints[0]["x"]
+      )
+    summaries.append(
+      {
+        "run_id": i,
+        "seed": seed,
+        "success": bool(success[i]),
+        "traversal_rate": traversal_rate,
+        "max_progress": max(float(r["path_progress"]) for r in rows),
+        "final_progress": final_progress,
+        "reached_difficulty_level": max(float(r["terrain_difficulty"]) for r in rows),
+        "time_elapsed": len(rows) * base_env.step_dt,
+        "episode_steps": len(rows),
+        "mean_speed": float(np.mean([r["actual_speed_xy_b"] for r in rows])),
+        "mean_command_speed": float(
+          np.mean(
+            [math.hypot(r["cmd_lin_vel_x_b"], r["cmd_lin_vel_y_b"]) for r in rows]
+          )
+        ),
+        "mean_velocity_tracking_error": float(
+          np.mean([r["velocity_tracking_error"] for r in rows])
+        ),
+        "mean_path_lateral_error": float(
+          np.mean([r["path_lateral_error"] for r in rows])
+        ),
+        "max_roll": max(abs(float(r["roll"])) for r in rows),
+        "max_pitch": max(abs(float(r["pitch"])) for r in rows),
+        "fall": fall_flag,
+        "stuck": bool(stuck[i]),
+        "termination_reason": termination_reason[i],
+        **patch_pass,
+      }
+    )
+    loggers[i].events.update(
+      {
+        "success": bool(success[i]),
+        "done": bool(done[i]),
+        "termination_reason": termination_reason[i],
+        "stuck": bool(stuck[i]),
+        "stuck_time": args.stuck_time,
+        "stuck_progress_epsilon": args.stuck_progress_epsilon,
+        "final_progress": final_progress,
+        "traversal_rate": traversal_rate,
+        "episode_steps": len(rows),
+      }
+    )
+    print(
+      f"[EVAL] run {i} done success={bool(success[i])} "
+      f"reason={termination_reason[i]} "
+      f"progress={final_progress:.2f}/{total_length:.2f}m "
+      f"rate={traversal_rate:.3f} steps={len(rows)}"
+    )
 
-  final = rows_for_summary[-1]
-  total_length = float(terrain_metadata["total_path_length"])
-  final_progress = float(final["path_progress"])
-  traversal_rate = float(np.clip(final_progress / max(total_length, 1e-9), 0.0, 1.0))
-  fall_flag = termination_reason in {"fell_over", "illegal_contact"}
-  patch_pass = {}
-  for patch in terrain_metadata["patches"]:
-    idx = patch["patch_index"]
-    patch_pass[f"passed_patch_{idx:02d}"] = final_progress >= float(patch["end_position"][0] - waypoints[0]["x"])
-  summary = {
-    "run_id": run_id,
-    "seed": seed,
-    "success": success,
-    "traversal_rate": traversal_rate,
-    "max_progress": max(float(r["path_progress"]) for r in rows_for_summary),
-    "final_progress": final_progress,
-    "reached_difficulty_level": max(float(r["terrain_difficulty"]) for r in rows_for_summary),
-    "time_elapsed": len(rows_for_summary) * base_env.step_dt,
-    "episode_steps": len(rows_for_summary),
-    "mean_speed": float(np.mean([r["actual_speed_xy_b"] for r in rows_for_summary])),
-    "mean_command_speed": float(np.mean([
-      math.hypot(r["cmd_lin_vel_x_b"], r["cmd_lin_vel_y_b"]) for r in rows_for_summary
-    ])),
-    "mean_velocity_tracking_error": float(np.mean([r["velocity_tracking_error"] for r in rows_for_summary])),
-    "mean_path_lateral_error": float(np.mean([r["path_lateral_error"] for r in rows_for_summary])),
-    "max_roll": max(abs(float(r["roll"])) for r in rows_for_summary),
-    "max_pitch": max(abs(float(r["pitch"])) for r in rows_for_summary),
-    "fall": fall_flag,
-    "termination_reason": termination_reason,
-    **patch_pass,
-  }
-  logger.events.update(
-    {
-      "success": success,
-      "done": done,
-      "termination_reason": termination_reason,
-      "final_progress": final_progress,
-      "traversal_rate": traversal_rate,
-      "episode_steps": len(rows_for_summary),
-    }
-  )
-  logger.write()
-  print(
-    f"[EVAL] run {run_id + 1}/ {args.num_runs} done "
-    f"success={success} reason={termination_reason} "
-    f"progress={final_progress:.2f}/{total_length:.2f}m "
-    f"rate={traversal_rate:.3f} steps={len(rows_for_summary)}"
-  )
-  return summary
+  # Write all loggers in parallel; savez_compressed releases the GIL enough to
+  # overlap disk IO across threads.
+  with ThreadPoolExecutor(max_workers=min(N, 8)) as ex:
+    list(ex.map(lambda lg: lg.write(), loggers))
+
+  return summaries
 
 
 def parse_args() -> argparse.Namespace:
@@ -562,9 +777,43 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--num-runs", type=int, default=100)
   parser.add_argument("--output-dir", default="logs/tmp")
   parser.add_argument("--video-run", type=int, default=0)
+  parser.add_argument("--video-width", type=int, default=1920)
+  parser.add_argument("--video-height", type=int, default=1080)
+  parser.add_argument(
+    "--video-fps",
+    type=float,
+    default=None,
+    help=(
+      "Target video frame rate. Defaults to the control rate (~50 Hz, every "
+      "step). Lower values capture fewer frames at the same real-time duration, "
+      "e.g. --video-fps 25 captures every 2nd step."
+    ),
+  )
   parser.add_argument("--seed", type=int, default=None)
   parser.add_argument("--max-episode-time", type=float, default=None)
   parser.add_argument("--max-steps", type=int, default=None)
+  parser.add_argument(
+    "--stuck-time",
+    type=float,
+    default=20.0,
+    help="Terminate a run if path progress does not improve enough for this many seconds. Use <=0 to disable.",
+  )
+  parser.add_argument(
+    "--stuck-progress-epsilon",
+    type=float,
+    default=0.25,
+    help="Minimum path-progress improvement, in meters, required to reset stuck detection.",
+  )
+  parser.add_argument(
+    "--allow-calf-contact",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help=(
+      "Allow calf contact during evaluation by excluding the calf collision geoms "
+      "from the illegal_contact termination. Use --no-allow-calf-contact to restore "
+      "the strict training behavior."
+    ),
+  )
   parser.add_argument("--lookahead-distance", type=float, default=1.0)
   parser.add_argument("--target-speed", type=float, default=0.8)
   parser.add_argument("--max-linear-velocity", type=float, default=1.5)
@@ -598,6 +847,10 @@ def main() -> None:
   import src.tasks  # noqa: F401
 
   args = parse_args()
+  if args.stuck_progress_epsilon <= 0.0:
+    raise ValueError("--stuck-progress-epsilon must be positive.")
+  if args.video_width <= 0 or args.video_height <= 0:
+    raise ValueError("--video-width and --video-height must be positive.")
 
   # Pin GPU selection before CUDA is initialized (mirrors scripts/run.sh's --gpus).
   # Must run before configure_torch_backends()/torch.cuda.is_available(), which
@@ -635,9 +888,15 @@ def main() -> None:
 
   env_cfg, agent_cfg, saved_run = _load_training_configs(task, run_dir)
   args.clip_actions = agent_cfg.get("clip_actions")
-  if args.seed is not None:
-    env_cfg.seed = args.seed
-    agent_cfg["seed"] = args.seed
+  # Draw a fresh random base seed each invocation unless one is given explicitly.
+  # All envs in the batch share this single global seed (mjlab seeding is global)
+  # and the terrain layout is seeded from it, so passing --seed <value> reproduces
+  # a whole evaluation.
+  if args.seed is None:
+    args.seed = secrets.randbelow(2**31 - 1)
+    print(f"[INFO] No --seed given; using random seed {args.seed}")
+  env_cfg.seed = args.seed
+  agent_cfg["seed"] = args.seed
 
   waypoints, terrain_metadata = _apply_eval_overrides(env_cfg, args)
   output_dir = Path(args.output_dir).expanduser().resolve()
@@ -668,21 +927,23 @@ def main() -> None:
     f"[INFO] Loaded checkpoint {checkpoint.name}; actor_obs_dim actual={actual_dim}, checkpoint={expected_dim}"
   )
 
-  summaries = []
+  if args.video_run >= args.num_runs:
+    print(
+      f"[WARN] --video-run {args.video_run} >= --num-runs {args.num_runs}; "
+      "disabling video for this batch."
+    )
+    args.video_run = -1
+
   try:
-    for run_id in range(args.num_runs):
-      summaries.append(
-        _run_one(
-          base_env=base_env,
-          policy=policy,
-          args=args,
-          checkpoint=checkpoint,
-          output_dir=output_dir,
-          run_id=run_id,
-          terrain_metadata=terrain_metadata,
-          waypoints=waypoints,
-        )
-      )
+    summaries = _run_batch(
+      base_env=base_env,
+      policy=policy,
+      args=args,
+      checkpoint=checkpoint,
+      output_dir=output_dir,
+      terrain_metadata=terrain_metadata,
+      waypoints=waypoints,
+    )
   finally:
     base_env.close()
 

@@ -15,3 +15,5 @@ simulate/build
 
 *.egg-info/
 __pycache__/
+
+tmp/

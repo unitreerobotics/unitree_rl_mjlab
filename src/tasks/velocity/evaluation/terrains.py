@@ -64,7 +64,7 @@ class RoughCurriculumCorridorTerrainCfg(SubTerrainCfg):
   min_noise: float = 0.01
   max_noise: float = 0.12
   noise_step: float = 0.01
-  border_width: float = 0.25
+  border_width: float = 0.0
   horizontal_scale: float = 0.08
   vertical_scale: float = 0.005
 
@@ -103,7 +103,7 @@ class PerlinNoiseCorridorTerrainCfg(SubTerrainCfg):
   scale: float = 10.0
   horizontal_scale: float = 0.1
   resolution: float = 0.05
-  border_width: float = 0.25
+  border_width: float = 0.0
 
   def function(
     self, difficulty: float, spec: mujoco.MjSpec, rng: np.random.Generator

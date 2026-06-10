@@ -12,6 +12,8 @@ import torch
 def tensor_to_numpy(value: Any, env_idx: int = 0) -> np.ndarray | None:
   if value is None:
     return None
+  if isinstance(value, np.ndarray):
+    return value
   if isinstance(value, torch.Tensor):
     if value.ndim > 0 and value.shape[0] > env_idx:
       value = value[env_idx]
