@@ -447,7 +447,10 @@ def _go2_task_ids() -> list[str]:
         from mjlab.tasks.registry import list_tasks
     except Exception:
         return ["Unitree-Go2-Test"]
-    tasks = [task for task in list_tasks() if task.startswith("Unitree-Go2-")]
+    # Match the whole Go2 family: "Unitree-Go2-*" (legged) and "Unitree-Go2W-*"
+    # (wheeled). The prefix deliberately omits the trailing hyphen so "Go2W"
+    # is included.
+    tasks = [task for task in list_tasks() if task.startswith("Unitree-Go2")]
     return tasks or ["Unitree-Go2-Test"]
 
 
@@ -515,6 +518,7 @@ def _start_play_process(
     checkpoint: Path,
     attribution: bool,
     attribution_method: str,
+    enable_terminations: bool,
     args: argparse.Namespace,
 ) -> proc_mgr.ManagedProcess:
     port = proc_mgr.find_free_port(args.viewer_port_start, args.viewer_port_end)
@@ -528,6 +532,8 @@ def _start_play_process(
         "--viewer",
         "viser",
     ]
+    if not enable_terminations:
+        command.extend(["--no-terminations", "True"])
     if attribution:
         command.extend([
             "--attribution",
@@ -772,13 +778,18 @@ def _render_run_actions(
             index=checkpoint_index,
             disabled=not run.checkpoints,
         )
-        c3, c4 = st.columns([1, 2])
+        c3, c4, c5 = st.columns([1, 2, 1])
         attribution = c3.checkbox("Attribution", value=True)
         attribution_method = c4.selectbox(
             "Attribution method",
             _ATTRIBUTION_METHODS,
             index=_default_index(list(_ATTRIBUTION_METHODS), "deep_shap"),
             disabled=not attribution,
+        )
+        enable_terminations = c5.checkbox(
+            "Terminations",
+            value=True,
+            help="Stop episodes on configured termination conditions such as falls or illegal contact.",
         )
         selected_checkpoint = (
             run.checkpoints[checkpoint_labels.index(checkpoint_label)]
@@ -794,6 +805,7 @@ def _render_run_actions(
                     checkpoint=selected_checkpoint,
                     attribution=attribution,
                     attribution_method=attribution_method,
+                    enable_terminations=enable_terminations,
                     args=args,
                 )
             except Exception as exc:

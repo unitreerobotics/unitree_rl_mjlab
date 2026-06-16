@@ -49,7 +49,15 @@ class UniformVelocityCommand(CommandTerm):
     # Set by create_gui() when the viewer is active.
     self._joystick_enabled: viser.GuiCheckboxHandle | None = None
     self._joystick_sliders: list[viser.GuiSliderHandle] = []
+    self._joystick_accel_enabled: viser.GuiCheckboxHandle | None = None
+    self._joystick_accel_slider: viser.GuiSliderHandle | None = None
+    self._joystick_buttons: list[viser.GuiButtonHandle] = []
+    self._joystick_commands: list[viser.CommandHandle] = []
     self._joystick_get_env_idx: Callable[[], int] | None = None
+    self._joystick_hold_time = 0.0
+    self._joystick_hold_timeout = 0.25
+    self._joystick_axis_target = torch.zeros(3, device=self.device)
+    self._joystick_axis_until = torch.zeros(3, device=self.device)
 
   @property
   def command(self) -> torch.Tensor:
@@ -116,7 +124,7 @@ class UniformVelocityCommand(CommandTerm):
     server: "viser.ViserServer",
     get_env_idx: Callable[[], int],
   ) -> None:
-    """Create velocity joystick sliders in the Viser viewer."""
+    """Create velocity joystick controls in the Viser viewer."""
     from viser import Icon
 
     ranges = self.cfg.ranges
@@ -127,6 +135,8 @@ class UniformVelocityCommand(CommandTerm):
       ("ang_vel_z", ranges.ang_vel_z[1]),
     ]
     sliders: list = []
+    buttons: list = []
+    commands: list = []
 
     with server.gui.add_folder(name.capitalize()):
       enabled = server.gui.add_checkbox("Enable", initial_value=False)
@@ -151,6 +161,7 @@ class UniformVelocityCommand(CommandTerm):
         def _(_ev, _s=slider, _m=max_input) -> None:
           _s.min = -_m.value
           _s.max = _m.value
+          _s.value = min(max(_s.value, _s.min), _s.max)
 
         sliders.append(slider)
 
@@ -161,9 +172,97 @@ class UniformVelocityCommand(CommandTerm):
         for s in sliders:
           s.value = 0.0
 
+      with server.gui.add_folder("Joy controller"):
+        linear_speed = server.gui.add_slider(
+          "Linear speed",
+          initial_value=0.5,
+          step=0.05,
+          min=0.0,
+          max=max(ranges.lin_vel_x[1], ranges.lin_vel_y[1], 0.1),
+        )
+        yaw_speed = server.gui.add_slider(
+          "Yaw speed",
+          initial_value=0.5,
+          step=0.05,
+          min=0.0,
+          max=max(ranges.ang_vel_z[1], 0.1),
+        )
+        accel_enabled = server.gui.add_checkbox(
+          "Acceleration mode", initial_value=False
+        )
+        accel_slider = server.gui.add_slider(
+          "Acceleration",
+          initial_value=2.0,
+          step=0.1,
+          min=0.1,
+          max=10.0,
+        )
+
+        def set_axis(axis: int, value: float) -> None:
+          enabled.value = True
+          clipped = min(max(value, sliders[axis].min), sliders[axis].max)
+          self._joystick_axis_target[axis] = clipped
+          self._joystick_axis_until[axis] = (
+            self._joystick_hold_time + self._joystick_hold_timeout
+          )
+
+        def zero() -> None:
+          enabled.value = True
+          self._joystick_axis_target.zero_()
+          self._joystick_axis_until.zero_()
+          for s in sliders:
+            s.value = 0.0
+
+        def add_joy_button(
+          label: str,
+          hotkey: str,
+          axis: int | None = None,
+          sign: float = 0.0,
+        ) -> None:
+          button = server.gui.add_button(label)
+
+          def trigger() -> None:
+            if axis is None:
+              zero()
+            else:
+              speed = linear_speed.value if axis < 2 else yaw_speed.value
+              set_axis(axis, sign * speed)
+
+          @button.on_click
+          def _(_) -> None:
+            trigger()
+
+          @button.on_hold(callback_hz=30.0)
+          def _(_) -> None:
+            trigger()
+
+          cmd = server.gui.add_command(
+            f"{name.capitalize()}: {label}",
+            hotkey=hotkey,
+          )
+
+          @cmd.on_trigger
+          def _(_) -> None:
+            trigger()
+
+          buttons.append(button)
+          commands.append(cmd)
+
+        add_joy_button("I forward", "I", axis=0, sign=1.0)
+        add_joy_button("K backward", "K", axis=0, sign=-1.0)
+        add_joy_button("J left", "J", axis=1, sign=1.0)
+        add_joy_button("L right", "L", axis=1, sign=-1.0)
+        add_joy_button("U turn left", "U", axis=2, sign=1.0)
+        add_joy_button("O turn right", "O", axis=2, sign=-1.0)
+        add_joy_button("P stop", "P")
+
     # Store GUI state for compute() override.
     self._joystick_enabled = enabled
     self._joystick_sliders = sliders
+    self._joystick_accel_enabled = accel_enabled
+    self._joystick_accel_slider = accel_slider
+    self._joystick_buttons = buttons
+    self._joystick_commands = commands
     self._joystick_get_env_idx = get_env_idx
 
   def compute(self, dt: float) -> None:
@@ -171,8 +270,29 @@ class UniformVelocityCommand(CommandTerm):
     if self._joystick_enabled is not None and self._joystick_enabled.value:
       assert self._joystick_get_env_idx is not None
       idx = self._joystick_get_env_idx()
-      for i, s in enumerate(self._joystick_sliders):
-        self.vel_command_b[idx, i] = s.value
+      self._joystick_hold_time += dt
+      active = self._joystick_axis_until > self._joystick_hold_time
+      target = torch.where(
+        active,
+        self._joystick_axis_target.to(dtype=self.vel_command_b.dtype),
+        torch.zeros(3, device=self.device, dtype=self.vel_command_b.dtype),
+      )
+      for i, slider in enumerate(self._joystick_sliders):
+        slider.value = float(target[i].item())
+      if (
+        self._joystick_accel_enabled is not None
+        and self._joystick_accel_enabled.value
+      ):
+        assert self._joystick_accel_slider is not None
+        max_delta = self._joystick_accel_slider.value * dt
+        delta = torch.clamp(
+          target - self.vel_command_b[idx],
+          min=-max_delta,
+          max=max_delta,
+        )
+        self.vel_command_b[idx] += delta
+      else:
+        self.vel_command_b[idx] = target
 
   # Visualization.
 
