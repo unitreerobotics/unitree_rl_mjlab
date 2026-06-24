@@ -1,0 +1,26 @@
+nohup: ignoring input
+[INFO] checkpoints_csv=tmp/checkpoints.csv
+[INFO] terrain=stairs_corridor
+[INFO] output_dir=logs/data/eval/20260623_stairs_100runs
+[INFO] gpus=0 1 2 3
+[INFO] 8 checkpoint(s), 100 runs each.
+[LAUNCH] gpu=0 go2_velocity_encoder_conv1d_2026-06-06_22-14-43 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_conv1d_2026-06-06_22-14-43/stairs_corridor
+[LAUNCH] gpu=1 go2_velocity_encoder_conv1d_state_2026-06-04_16-08-38 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_conv1d_state_2026-06-04_16-08-38/stairs_corridor
+[LAUNCH] gpu=2 go2_velocity_encoder_conv2d_2026-06-06_22-15-28 / stairs_co[DONE rc=0] go2_velocity_encoder_conv1d_state_2026-06-04_16-08-38 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_conv2d_2026-06-06_22-15-28 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_conv2d_2026-06-06_22-15-28/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_conv2d_2026-06-06_22-15-28 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_conv2d_state_2026-06-04_18-54-14 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_conv2d_state_2026-06-04_18-54-14/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_conv2d_state_2026-06-04_18-54-14 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_mlp_2026-06-03_21-57-08 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_mlp_2026-06-03_21-57-08/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_mlp_2026-06-03_21-57-08 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_mlp_state_2026-06-04_16-08-03 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_mlp_state_2026-06-04_16-08-03/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_mlp_state_2026-06-04_16-08-03 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_raw_2026-06-03_21-56-20 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_raw_2026-06-03_21-56-20/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_raw_2026-06-03_21-56-20 / stairs_corridor
+[LAUNCH] gpu=0 go2_velocity_encoder_ae_2026-06-09_22-30-55 / stairs_corridor -> logs/data/eval/20260623_stairs_100runs/go2_velocity_encoder_ae_2026-06-09_22-30-55/stairs_corridor
+[DONE rc=0] go2_velocity_encoder_ae_2026-06-09_22-30-55 / stairs_corridor
+[ERROR] One or more evaluations failed. Check logs under logs/data/eval/20260623_stairs_100runs/_logs.
+tairs_corridor/
+[AGGREGATE] Building combined summary...
+[AGGREGATE] Wrote 8 row(s) to /data/k_suzuki/unitree_rl_mjlab/data/eval/20260623_stairs_100runs/combined_summary.csv
+[AGGREGATE] Wrote logs/data/eval/20260623_stairs_100runs/combined_summary.csv

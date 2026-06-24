@@ -1,0 +1,11 @@
+# Disable Streamlit's source-file watcher for this project.
+#
+# The train_log_manager app imports torch (policy/estimator code). Streamlit's
+# default watchdog watcher inspecting the large torch module tree from a second
+# thread while the script thread imports torch can deadlock the app on load
+# ("continues to load"). This is a data/analysis tool, not actively hot-reloaded,
+# so the watcher is unnecessary. Equivalent to:
+#   streamlit run ... --server.fileWatcherType none
+[server]
+fileWatcherType = "none"
+runOnSave = false

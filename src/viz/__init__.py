@@ -15,6 +15,7 @@ from src.viz.attribution import (
 )
 from src.viz.attribution_video import AttributionVideoRecorder
 from src.viz.attribution_viewer import AttributionViserPlayViewer
+from src.viz.risk_viewer import RiskViserPlayViewer
 
 __all__ = [
   "AttributionMapResult",
@@ -23,6 +24,7 @@ __all__ = [
   "AttributionTerm",
   "AttributionVideoRecorder",
   "AttributionViserPlayViewer",
+  "RiskViserPlayViewer",
   "DeepLiftRescale",
   "DeepShap",
   "GradientInput",

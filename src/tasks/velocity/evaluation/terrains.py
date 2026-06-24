@@ -8,6 +8,7 @@ import numpy as np
 
 from mjlab.terrains import (
   BoxFlatTerrainCfg,
+  BoxPyramidStairsTerrainCfg,
   BoxRandomSpreadTerrainCfg,
   HfPerlinNoiseTerrainCfg,
   HfRandomUniformTerrainCfg,
@@ -18,6 +19,7 @@ SUPPORTED_EVAL_TERRAINS = (
   "rough_curriculum_corridor",
   "perlin_noise_corridor",
   "random_spread_boxes_corridor",
+  "stairs_corridor",
 )
 
 
@@ -171,6 +173,41 @@ class RandomSpreadBoxesCorridorTerrainCfg(SubTerrainCfg):
     return terrain.function(progress, spec, rng)
 
 
+@dataclass(kw_only=True)
+class StairsCorridorTerrainCfg(SubTerrainCfg):
+  """Single-column pyramid-stairs corridor with flat spawn and finish patches.
+
+  Each intermediate patch is a pyramid staircase (ascend to the patch center,
+  then descend). The step height grows with difficulty along the corridor.
+  """
+
+  num_terrain_patches: int = 8
+  min_step_height: float = 0.05
+  max_step_height: float = 0.20
+  step_width: float = 0.30
+  platform_width: float = 1.0
+  border_width: float = 0.0
+
+  def function(
+    self, difficulty: float, spec: mujoco.MjSpec, rng: np.random.Generator
+  ):
+    if _is_spawn_patch(difficulty, self.num_terrain_patches) or _is_finish_patch(
+      difficulty, self.num_terrain_patches
+    ):
+      return _flat_patch(self.size, difficulty, spec, rng)
+
+    progress = _terrain_progress(difficulty, self.num_terrain_patches)
+    stairs = BoxPyramidStairsTerrainCfg(
+      proportion=1.0,
+      step_height_range=(self.min_step_height, self.max_step_height),
+      step_width=self.step_width,
+      platform_width=self.platform_width,
+      border_width=self.border_width,
+    )
+    stairs.size = self.size
+    return stairs.function(progress, spec, rng)
+
+
 def make_rough_curriculum_corridor_cfg(
   *,
   seed: int | None,
@@ -268,6 +305,37 @@ def make_random_spread_boxes_corridor_cfg(
   )
 
 
+def make_stairs_corridor_cfg(
+  *,
+  seed: int | None,
+  patch_length: float = 4.0,
+  corridor_width: float = 3.0,
+  num_terrain_patches: int = 8,
+  min_step_height: float = 0.05,
+  max_step_height: float = 0.20,
+) -> TerrainGeneratorCfg:
+  rows = num_terrain_patches + 2
+  return TerrainGeneratorCfg(
+    seed=seed,
+    curriculum=True,
+    size=(patch_length, corridor_width),
+    border_width=2.0,
+    num_rows=rows,
+    num_cols=1,
+    color_scheme="height",
+    difficulty_range=(0.0, 1.0),
+    sub_terrains={
+      "stairs_corridor": StairsCorridorTerrainCfg(
+        proportion=1.0,
+        num_terrain_patches=num_terrain_patches,
+        min_step_height=min_step_height,
+        max_step_height=max_step_height,
+      )
+    },
+    add_lights=True,
+  )
+
+
 def make_eval_terrain_cfg(
   eval_terrain: str,
   *,
@@ -279,6 +347,8 @@ def make_eval_terrain_cfg(
     terrain_cfg = make_perlin_noise_corridor_cfg(seed=seed)
   elif eval_terrain == "random_spread_boxes_corridor":
     terrain_cfg = make_random_spread_boxes_corridor_cfg(seed=seed)
+  elif eval_terrain == "stairs_corridor":
+    terrain_cfg = make_stairs_corridor_cfg(seed=seed)
   else:
     supported = ", ".join(SUPPORTED_EVAL_TERRAINS)
     raise ValueError(
@@ -328,6 +398,19 @@ def _patch_kind_and_params(
           ],
           "box_width_range": list(corridor.box_width_range),
           "box_length_range": list(corridor.box_length_range),
+        }
+      },
+    )
+  if isinstance(corridor, StairsCorridorTerrainCfg):
+    step_height = corridor.min_step_height + difficulty * (
+      corridor.max_step_height - corridor.min_step_height
+    )
+    return (
+      "pyramid_stairs",
+      {
+        "pyramid_stairs": {
+          "step_height": step_height,
+          "step_width": corridor.step_width,
         }
       },
     )

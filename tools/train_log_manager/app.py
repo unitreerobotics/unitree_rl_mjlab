@@ -17,6 +17,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# The Evaluator tab imports the torch-based eval engine. Streamlit's source
+# watcher inspects every imported module's __path__; under torch>=2.x,
+# touching ``torch.classes.__path__`` raises, which has caused load-time
+# hangs on some Streamlit versions. Neutralize it defensively (newer
+# Streamlit already guards this, but it is cheap insurance).
+try:  # pragma: no cover - environment guard
+    import torch as _torch
+    _torch.classes.__path__ = []
+except Exception:
+    pass
+
 # Allow ``streamlit run`` to resolve sibling modules.
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -25,11 +36,12 @@ if str(_HERE) not in sys.path:
 import columns as col_mod  # noqa: E402
 import process_manager as proc_mgr  # noqa: E402
 from diff import dict_diff, dot_get  # noqa: E402
-from scanner import Run, checkpoint_iter, scan_runs  # noqa: E402
+from scanner import Run, checkpoint_iter, rewards_pending, scan_runs  # noqa: E402
 
 
 REPO_ROOT = _HERE.parents[1]
 DEFAULT_LOGS_ROOT = REPO_ROOT / "logs" / "rsl_rl"
+DEFAULT_TRAV_ROOT = REPO_ROOT / "logs" / "traversability"
 CONFIG_PATH = _HERE / ".columns.json"
 _TERRAIN_VIEWER_SCRIPT = REPO_ROOT / "scripts" / "visualize_terrain.py"
 
@@ -520,6 +532,7 @@ def _start_play_process(
     attribution_method: str,
     enable_terminations: bool,
     args: argparse.Namespace,
+    risk_estimator: Path | None = None,
 ) -> proc_mgr.ManagedProcess:
     port = proc_mgr.find_free_port(args.viewer_port_start, args.viewer_port_end)
     url = f"http://{args.viewer_url_host}:{port}"
@@ -541,6 +554,8 @@ def _start_play_process(
             "--attribution-method",
             attribution_method,
         ])
+    if risk_estimator is not None:
+        command.extend(["--risk-estimator", str(Path(risk_estimator).resolve())])
     proc = proc_mgr.start_process(
         label=f"play_{run.experiment}_{run.run_id}_{task_id}_{checkpoint.stem}",
         command=command,
@@ -873,15 +888,13 @@ def _render_detail(base: Run, other: Run) -> None:
             st.code(other.git_diff or "(empty)", language="diff")
 
 
-def main() -> None:
-    st.set_page_config(page_title="Train Log Manager", layout="wide")
-    args = _parse_args()
-
-    cols_state = _init_columns()
-    tb_url = _effective_tb_url(args)
-    task_ids = _go2_task_ids()
-
-    st.title("Train Log Manager")
+def _render_runs_tab(
+    args: argparse.Namespace,
+    tb_url: str,
+    task_ids: list[str],
+    cols_state: list[dict],
+) -> None:
+    """The original run-browser page: table + actions + detail + columns."""
     st.caption(f"Scanning `{args.logs_root}`")
 
     _render_terrain_viewer_action(args)
@@ -918,9 +931,6 @@ def main() -> None:
             "run_id": st.column_config.LinkColumn(
                 "run_id",
                 help="Open this run in TensorBoard",
-                # URL ends in "…regexInput=<escaped_run_id>$". Strip the
-                # trailing $ anchor and unescape '\-' so the cell shows a
-                # clean timestamp instead of the raw regex.
                 display_text=r"regexInput=(.+)\$$",
                 pinned=True,
             ),
@@ -932,6 +942,13 @@ def main() -> None:
         },
     )
     st.caption(f"{len(df)} / {len(runs)} runs shown")
+    if rewards_pending(args.logs_root) or any(
+        r.max_mean_reward is None and r.tfevents is not None for r in runs
+    ):
+        st.caption(
+            "⏳ max_mean_reward is still computing in the background "
+            "— click ↻ Rescan in a moment to refresh."
+        )
 
     selected_rows = list(getattr(event.selection, "rows", []) or [])
     selected_runs = [
@@ -956,6 +973,277 @@ def main() -> None:
     _render_processes()
 
     _render_column_manager(runs)
+
+
+# --------------------------------------------------------------------------- #
+# Traversability estimator evaluator tab.
+#
+# Surfaces tools/eval_traversability.py inside the log manager: metrics report,
+# per-episode risk timelines, spatial risk maps (all in-process on CPU), and a
+# GPU "live overlay" launched through the shared process manager.
+# --------------------------------------------------------------------------- #
+_TOOLS_DIR = str(_HERE.parent)
+
+
+def _import_eval_engine():
+    """Import the shared eval engine (tools/_trav_eval_common.py)."""
+    if _TOOLS_DIR not in sys.path:
+        sys.path.insert(0, _TOOLS_DIR)
+    import _trav_eval_common as tec  # noqa: E402
+    return tec
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(show_spinner="Scoring labels…")
+def _cached_label_scores(labels_path: str, checkpoint: str, ckpt_mtime: float, split: str):
+    tec = _import_eval_engine()
+    return tec.score_labels_file(labels_path, checkpoint, device="cpu", split=split)
+
+
+@st.cache_data(show_spinner="Scoring rollouts…")
+def _cached_rollout_scalar(rollouts_path: str, checkpoint: str, roll_mtime: float, ckpt_mtime: float):
+    tec = _import_eval_engine()
+    return tec.score_rollouts_file(rollouts_path, checkpoint, device="cpu", keep_heavy=False)
+
+
+def _pick_artifact(label: str, root: Path, patterns: tuple[str, ...], key: str):
+    files: list[Path] = []
+    for pat in patterns:
+        files.extend(p for p in sorted(root.glob(pat)) if p not in files)
+    if not files:
+        st.warning(f"No {label} found under {root}.")
+        return None
+    names = [f.name for f in files]
+    choice = st.selectbox(label, names, key=key)
+    return files[names.index(choice)]
+
+
+def _render_evaluator_tab(args: argparse.Namespace) -> None:
+    st.subheader("Traversability estimator evaluation")
+    st.caption(
+        "Inspect a policy-conditioned traversability estimator: metrics report, "
+        "per-episode risk timelines, spatial risk maps, and a live sim overlay."
+    )
+    try:
+        _import_eval_engine()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not import the eval engine (tools/_trav_eval_common.py): {exc}")
+        return
+
+    root = Path(st.text_input("Artifacts directory", value=str(DEFAULT_TRAV_ROOT)))
+    if not root.is_dir():
+        st.warning(f"{root} is not a directory.")
+        return
+
+    estimator = _pick_artifact("Estimator checkpoint (*.pt)", root, ("*.pt",), "trav_est")
+    if estimator is None:
+        return
+
+    report_tab, tl_tab, sp_tab, play_tab, live_tab = st.tabs(
+        ["Report", "Timelines", "Spatial map", "Play (live)", "Live overlay"]
+    )
+
+    with report_tab:
+        labels_file = _pick_artifact(
+            "Labels file (labels*.npz)", root, ("labels*.npz", "*labels*.npz"), "rep_lbl"
+        )
+        split = st.selectbox("Split", ["val", "train", "all"], key="rep_split")
+        if labels_file and st.button("Run report", key="rep_run", type="primary"):
+            tec = _import_eval_engine()
+            scores, labels, info = _cached_label_scores(
+                str(labels_file), str(estimator), _mtime(estimator), split
+            )
+            fig, result = tec.build_report_figure(scores, labels)
+            m = result["metrics"]
+            c = st.columns(4)
+            c[0].metric("ROC-AUC", f"{m['auc']:.4f}")
+            c[1].metric("PR-AUC", f"{m['ap']:.4f}")
+            c[2].metric("Acc@0.5", f"{m['acc']:.4f}")
+            c[3].metric("Brier", f"{m['brier']:.4f}")
+            st.pyplot(fig)
+            st.caption(
+                f"split={info['split']}  n={info['n_samples']}  "
+                f"pos_rate={result['pos_rate']:.4f}"
+            )
+            st.dataframe(pd.DataFrame(result["sweep"]), hide_index=True, width="stretch")
+
+    with tl_tab:
+        roll_file = _pick_artifact(
+            "Rollouts file (raw_rollouts*.npz)", root,
+            ("raw_rollouts*.npz", "*rollouts*.npz"), "tl_roll",
+        )
+        threshold = st.slider("Alarm threshold", 0.05, 0.95, 0.5, 0.05, key="tl_thr")
+        if roll_file and st.button("Score rollouts", key="tl_run", type="primary"):
+            st.session_state["_tl_ready"] = (str(roll_file), str(estimator))
+        ready = st.session_state.get("_tl_ready")
+        if ready and roll_file is not None and ready == (str(roll_file), str(estimator)):
+            tec = _import_eval_engine()
+            scored = _cached_rollout_scalar(
+                ready[0], ready[1], _mtime(Path(ready[0])), _mtime(estimator)
+            )
+            fig_lt, stats = tec.build_leadtime_figure(scored, threshold=threshold)
+            fig_tl, _ = tec.build_timeline_figure(scored, threshold=threshold)
+            c = st.columns(4)
+            c[0].metric("Failures", stats["n_failures"])
+            c[1].metric("Detected", stats["n_detected"])
+            c[2].metric("Lead median (s)", f"{stats['lead_median_s']:.2f}")
+            c[3].metric("False alarms/min", f"{stats['false_alarms_per_min']:.1f}")
+            st.pyplot(fig_lt)
+            st.pyplot(fig_tl)
+
+    with sp_tab:
+        roll_file2 = _pick_artifact(
+            "Rollouts file (raw_rollouts*.npz)", root,
+            ("raw_rollouts*.npz", "*rollouts*.npz"), "sp_roll",
+        )
+        n_samples = st.number_input("Samples", 1, 24, 6, key="sp_n")
+        st.caption("Loads the full rollout (~1.5 GB) and runs the spatial head on demand.")
+        if roll_file2 and st.button("Render spatial maps", key="sp_run", type="primary"):
+            tec = _import_eval_engine()
+            with st.spinner("Scoring spatial head…"):
+                scored = tec.score_rollouts_file(
+                    str(roll_file2), str(estimator), device="cpu", spatial=True
+                )
+            if "risk_map" not in scored:
+                st.error("This estimator has no spatial head (train with --spatial-weight > 0).")
+            else:
+                fig, _ = tec.build_spatial_figure(scored, num_samples=int(n_samples))
+                st.pyplot(fig)
+
+    with play_tab:
+        _render_risk_play(args, root, estimator)
+
+    with live_tab:
+        _render_live_overlay(args, root, estimator)
+
+
+def _render_risk_play(args: argparse.Namespace, trav_root: Path, estimator: Path) -> None:
+    st.caption(
+        "Watch the policy walk **live** in a Viser viewer with the estimator's risk: "
+        "P(failure soon) gauge + sparkline, spatial risk map, and colored risk markers "
+        "on the terrain ahead of the robot. Uses GPU."
+    )
+    runs = _cached_scan(str(args.logs_root))
+    if not runs:
+        st.warning("No training runs found to pick a policy checkpoint from.")
+        return
+    run_labels = [f"{r.experiment}/{r.run_id}" for r in runs]
+    rlabel = st.selectbox("Policy run", run_labels, key="rp_run")
+    run = runs[run_labels.index(rlabel)]
+    if not run.checkpoints:
+        st.warning("Selected run has no checkpoints.")
+        return
+    if not run.task_id:
+        st.warning("Selected run has no task_id in params/run.yaml; cannot launch play.")
+        return
+    ck_labels = [_checkpoint_label(p) for p in run.checkpoints]
+    ck = st.selectbox(
+        "Policy checkpoint", ck_labels, index=len(ck_labels) - 1, key="rp_ck"
+    )
+    checkpoint = run.checkpoints[ck_labels.index(ck)]
+    enable_term = st.checkbox(
+        "Terminations", value=True, key="rp_term",
+        help="Stop episodes on configured termination conditions (falls, illegal contact).",
+    )
+    st.caption(f"Task: `{run.task_id}` — must match the task the estimator was trained on.")
+
+    if st.button("Launch live risk viewer", type="primary", key="rp_go"):
+        try:
+            proc = _start_play_process(
+                run=run,
+                task_id=run.task_id,
+                checkpoint=checkpoint,
+                attribution=False,
+                attribution_method="integrated_gradients",
+                enable_terminations=enable_term,
+                args=args,
+                risk_estimator=Path(estimator),
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not start live risk viewer: {exc}")
+        else:
+            st.success(
+                f"Started live risk viewer PID {proc.pid}. Click 'Open Viser' once it is "
+                "ready (also listed under 'Launched processes' on the Runs tab)."
+            )
+            if proc.url:
+                st.link_button("Open Viser", proc.url)
+            st.code(shlex.join(proc.command), language="bash")
+
+
+def _render_live_overlay(args: argparse.Namespace, trav_root: Path, estimator: Path) -> None:
+    st.caption("Roll the policy out and composite the risk overlay to an mp4 (uses GPU).")
+    runs = _cached_scan(str(args.logs_root))
+    if not runs:
+        st.warning("No training runs found to pick a policy checkpoint from.")
+        return
+    run_labels = [f"{r.experiment}/{r.run_id}" for r in runs]
+    rlabel = st.selectbox("Policy run", run_labels, key="live_run")
+    run = runs[run_labels.index(rlabel)]
+    if not run.checkpoints:
+        st.warning("Selected run has no checkpoints.")
+        return
+    ck_labels = [_checkpoint_label(p) for p in run.checkpoints]
+    ck = st.selectbox("Policy checkpoint", ck_labels, index=len(ck_labels) - 1, key="live_ck")
+    checkpoint = run.checkpoints[ck_labels.index(ck)]
+    steps = st.number_input("Steps", 100, 5000, 600, step=100, key="live_steps")
+    out_mp4 = trav_root / "eval" / "live_overlay.mp4"
+
+    if st.button("Launch live overlay", type="primary", key="live_go"):
+        command = [
+            sys.executable,
+            "tools/eval_traversability.py",
+            "live",
+            "--policy-checkpoint",
+            str(checkpoint.resolve()),
+            "--estimator",
+            str(Path(estimator).resolve()),
+            "--steps",
+            str(int(steps)),
+            "--output",
+            str(out_mp4.resolve()),
+        ]
+        try:
+            proc = proc_mgr.start_process(
+                label=f"trav_live_{run.run_id}_{checkpoint.stem}",
+                command=command,
+                cwd=REPO_ROOT,
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not start live overlay: {exc}")
+        else:
+            _play_processes()[f"travlive:{proc.pid}"] = proc
+            st.success(
+                f"Started live overlay PID {proc.pid}. Watch 'Launched processes' "
+                "on the Runs tab; the video appears here when it finishes."
+            )
+            st.code(shlex.join(proc.command), language="bash")
+
+    if out_mp4.exists():
+        st.video(str(out_mp4))
+
+
+def main() -> None:
+    st.set_page_config(page_title="Train Log Manager", layout="wide")
+    args = _parse_args()
+
+    cols_state = _init_columns()
+    tb_url = _effective_tb_url(args)
+    task_ids = _go2_task_ids()
+
+    st.title("Train Log Manager")
+
+    runs_tab, eval_tab = st.tabs(["Runs", "Evaluator"])
+    with runs_tab:
+        _render_runs_tab(args, tb_url, task_ids, cols_state)
+    with eval_tab:
+        _render_evaluator_tab(args)
 
 
 if __name__ == "__main__":

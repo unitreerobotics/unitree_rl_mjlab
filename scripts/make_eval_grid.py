@@ -143,16 +143,16 @@ def _effective_cell_size(cols: int, cell_width: int, cell_height: int, max_outpu
   return _even_at_least(int(cell_width * scale)), _even_at_least(int(cell_height * scale))
 
 
-def _checkpoint_dirs(base: Path) -> list[Path]:
+def _checkpoint_dirs(base: Path, terrains: list[str]) -> list[Path]:
   dirs = [
     p for p in base.iterdir()
-    if p.is_dir() and not p.name.startswith("_") and any((p / terrain).is_dir() for terrain in DEFAULT_TERRAINS)
+    if p.is_dir() and not p.name.startswith("_") and any((p / terrain).is_dir() for terrain in terrains)
   ]
   return sorted(dirs, key=_encoder_sort_key)
 
 
 def _collect_cells(base: Path, terrains: list[str]) -> tuple[list[Cell], list[Path]]:
-  checkpoint_dirs = _checkpoint_dirs(base)
+  checkpoint_dirs = _checkpoint_dirs(base, terrains)
   if not checkpoint_dirs:
     raise FileNotFoundError(f"No checkpoint result directories found under {base}.")
 
@@ -338,6 +338,12 @@ def main() -> None:
     default=DEFAULT_MAX_OUTPUT_WIDTH,
     help="Downscale cells if the tiled video would exceed this width. Use 0 to disable.",
   )
+  parser.add_argument(
+    "--terrains",
+    nargs="+",
+    default=DEFAULT_TERRAINS,
+    help="Terrain subdirectories (grid rows) to include. Defaults to the standard corridors.",
+  )
   args = parser.parse_args()
 
   base = Path(args.base).expanduser().resolve()
@@ -348,7 +354,7 @@ def main() -> None:
   if args.max_output_width < 0:
     raise ValueError("max output width must be non-negative.")
 
-  cells, checkpoint_dirs = _collect_cells(base, DEFAULT_TERRAINS)
+  cells, checkpoint_dirs = _collect_cells(base, args.terrains)
   checkpoint_count = len(checkpoint_dirs)
   if len(cells) % checkpoint_count != 0:
     raise RuntimeError("Collected an uneven grid; check terrain outputs.")
@@ -376,7 +382,7 @@ def main() -> None:
   _annotate_still(cells, still_path, annotated_path, checkpoint_count, cell_width, cell_height)
 
   encoders = [cell.encoder_label for cell in cells[:checkpoint_count]]
-  _print_outcome_matrix(cells, DEFAULT_TERRAINS, encoders)
+  _print_outcome_matrix(cells, args.terrains, encoders)
 
 
 if __name__ == "__main__":

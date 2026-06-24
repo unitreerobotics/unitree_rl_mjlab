@@ -18,7 +18,11 @@ from mjlab.utils.os import get_wandb_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
 from mjlab.utils.wrappers import VideoRecorder
 from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
-from src.viz import AttributionVideoRecorder, AttributionViserPlayViewer
+from src.viz import (
+  AttributionVideoRecorder,
+  AttributionViserPlayViewer,
+  RiskViserPlayViewer,
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,9 @@ class PlayConfig:
     "deep_shap",
   ] = "integrated_gradients"
   """Initial attribution method for the viser attribution panel."""
+  risk_estimator: str | None = None
+  """Path to a trained traversability estimator (.pt). When set with a viser
+  viewer, shows live P(failure soon) + spatial risk map + 3D risk markers."""
   no_terminations: bool = False
   """Disable all termination conditions (useful for viewing motions with dummy agents)."""
 
@@ -226,13 +233,24 @@ def run_play(task_id: str, cfg: PlayConfig):
     resolved_viewer = cfg.viewer
   if cfg.attribution and cfg.viewer == "auto":
     resolved_viewer = "viser"
+  if cfg.risk_estimator is not None and cfg.viewer == "auto":
+    resolved_viewer = "viser"
 
   if resolved_viewer == "native":
     if cfg.attribution:
       print("[WARN] Attribution visualizer is only available with --viewer viser.")
+    if cfg.risk_estimator is not None:
+      print("[WARN] Risk visualizer is only available with --viewer viser.")
     NativeMujocoViewer(env, policy).run()
   elif resolved_viewer == "viser":
-    if cfg.attribution and TRAINED_MODE:
+    if cfg.risk_estimator is not None and TRAINED_MODE:
+      if cfg.attribution:
+        print("[WARN] --risk-estimator overrides --attribution.")
+      RiskViserPlayViewer(env, policy, estimator_path=cfg.risk_estimator).run()
+    elif cfg.risk_estimator is not None:
+      print("[WARN] Risk visualizer requires --agent trained.")
+      ViserPlayViewer(env, policy).run()
+    elif cfg.attribution and TRAINED_MODE:
       AttributionViserPlayViewer(
         env,
         policy,

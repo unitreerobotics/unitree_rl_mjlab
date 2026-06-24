@@ -38,6 +38,7 @@ def test_eval_terrain_factory_preserves_corridor_metadata_contract(terrain_name)
     ("rough_curriculum_corridor", "random_rough", "roughness"),
     ("perlin_noise_corridor", "perlin_noise", "perlin_noise"),
     ("random_spread_boxes_corridor", "random_spread_boxes", "random_spread_boxes"),
+    ("stairs_corridor", "pyramid_stairs", "pyramid_stairs"),
   ],
 )
 def test_eval_terrain_metadata_records_terrain_specific_patch_params(
