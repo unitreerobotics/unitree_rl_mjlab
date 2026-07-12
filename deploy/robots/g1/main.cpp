@@ -30,6 +30,9 @@ int main(int argc, char** argv)
     // Load parameters
     auto vm = param::helper(argc, argv);
 
+    // Use the keyboard as a virtual joystick when `--keyboard` is given.
+    FSMState::use_keyboard = vm.count("keyboard") > 0;
+
     std::cout << " --- Unitree Robotics --- \n";
     std::cout << "     G1-29dof Controller \n";
 
@@ -48,9 +51,19 @@ int main(int argc, char** argv)
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
     fsm->start();
 
-    std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
-    std::cout << "And then press [R2 + A] to start controlling the robot.\n";
-    std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
+    if(FSMState::use_keyboard)
+    {
+        std::cout << "\n--- Keyboard control enabled (virtual joystick) ---\n";
+        std::cout << "  Mode:  [2] FixStand   [3] Velocity(walk)   [4] Mimic(dance)   [1] Passive(stop)\n";
+        std::cout << "  Move:  [w/s] forward/back   [a/d] strafe   [q/e] turn   [space] stop\n";
+        std::cout << "  Flow:  press 2 to stand, then 3 to walk, then use w/a/s/d/q/e.\n\n";
+    }
+    else
+    {
+        std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
+        std::cout << "And then press [R2 + A] to start controlling the robot.\n";
+        std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
+    }
 
     while (true)
     {
