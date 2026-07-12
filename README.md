@@ -164,7 +164,39 @@ Connect your PC to the robot via Ethernet. Configure the network as:
 
 Use `ifconfig` to determine the Ethernet device name for deployment.
 
-#### 4.4 Compilation
+#### 4.4 Export the Deployment Config (`deploy.yaml`)
+
+Every deployed policy needs a `deploy.yaml` that tells the C++ controller the PD
+gains, default joint pose, action scale/offset and observation layout. These
+values **must match the policy you trained** — the joint target is
+`action * scale + offset`, so a mismatched `offset` / `default_joint_pos`
+(e.g. one copied from a different motion) will command the robot to the wrong
+pose and can damage it. Instead of hand-copying the file, generate it directly
+from the trained task:
+
+```bash
+python scripts/export_deploy.py \
+  --task Unitree-G1-Tracking-No-State-Estimation \
+  --motion-file deploy/robots/g1/config/policy/mimic/dance_train/params/dance1_subject2.npz \
+  --output deploy/robots/g1/config/policy/mimic/dance_train/params/deploy.yaml \
+  --onnx deploy/robots/g1/config/policy/mimic/dance_train/exported/policy.onnx
+```
+
+**Arguments**：
+- `--task`: the registered task id used for deployment (the `-No-State-Estimation`
+  variant for tracking — its 154-dim observation matches the deployed policy).
+- `--motion-file`: the motion `.npz` the policy was trained on (used to build the env).
+- `--output`: where to write `deploy.yaml` (the policy's `params/` folder).
+- `--onnx` (optional): the exported policy. When given, the exporter validates that
+  the observation dimension matches the ONNX input and aborts on mismatch, catching
+  a wrong task variant or a stale config before it reaches the robot.
+
+> [!NOTE]
+> The exporter reads the **current** task config, which must match the config used
+> at training time. If you change the task config or robot asset after training,
+> re-export from a state matching that run.
+
+#### 4.5 Compilation
 
 Example: Unitree G1 velocity control.
 Place `policy.onnx` and `policy.onnx.data` into: `deploy/robots/g1/config/policy/velocity/v0/exported`.
@@ -176,9 +208,9 @@ mkdir build && cd build
 cmake .. && make
 ```
 
-#### 4.5 Deployment
+#### 4.6 Deployment
 
-## 4.5.1 Simulation Deployment
+## 4.6.1 Simulation Deployment
 
 Before deploying on the real robot, it is recommended to perform simulation deployment using [unitree_mujoco](https://github.com/unitreerobotics/unitree_mujoco)
 to prevent abnormal behaviors on the physical robot. This framework has already integrated it.
@@ -206,7 +238,30 @@ cd deploy/robots/g1/build
 ./g1_ctrl --network=lo
 ```
 
-## 4.5.2 Real-Robot Deployment
+**Keyboard control (no gamepad):** add the `--keyboard` flag to drive the robot from
+the keyboard instead of a gamepad. The keyboard acts as a virtual joystick, so both
+the velocity commands and the FSM transitions work exactly as with a real controller.
+
+```bash
+cd deploy/robots/g1/build
+./g1_ctrl --network=lo --keyboard
+```
+
+| Key         | Action                                   |
+|-------------|------------------------------------------|
+| `2`         | FixStand (stand up)                      |
+| `3`         | Velocity (start the walking policy)      |
+| `4`         | Mimic (dance)                            |
+| `1`         | Passive (damping / soft stop)            |
+| `w` / `s`   | move forward / backward                  |
+| `a` / `d`   | strafe left / right                      |
+| `q` / `e`   | turn left / right                        |
+| `space`     | stop (zero velocity)                     |
+
+Typical flow: press `2` to stand, then `3` to start walking, then use `w/a/s/d/q/e`.
+Velocity is *latched* (each tap adjusts the setpoint by 0.2), so press `space` to stop.
+
+## 4.6.2 Real-Robot Deployment
 
 Launch the control program on the real robot:
 
