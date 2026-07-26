@@ -13,6 +13,7 @@ from mjlab.scene import Scene
 from mjlab.sim.sim import Simulation, SimulationCfg
 from src.tasks.tracking.config.g1.env_cfgs import unitree_g1_flat_tracking_env_cfg
 from src.tasks.tracking.config.g1_23dof.env_cfgs import unitree_g1_23dof_flat_tracking_env_cfg
+from src.tasks.tracking.config.h2.env_cfgs import unitree_h2_flat_tracking_env_cfg
 from mjlab.utils.lab_api.math import (
   axis_angle_from_quat,
   quat_conjugate,
@@ -31,6 +32,7 @@ class MotionLoader:
     output_fps: int,
     device: torch.device | str,
     line_range: tuple[int, int] | None = None,
+    root_z_offset: float = 0.0,
   ):
     self.motion_file = motion_file
     self.input_fps = input_fps
@@ -40,6 +42,7 @@ class MotionLoader:
     self.current_idx = 0
     self.device = device
     self.line_range = line_range
+    self.root_z_offset = root_z_offset
     self._load_motion()
     self._interpolate_motion()
     self._compute_velocities()
@@ -58,7 +61,7 @@ class MotionLoader:
         )
       )
     motion = motion.to(torch.float32).to(self.device)
-    # motion[:, 2] -= 0.05
+    motion[:, 2] += self.root_z_offset
     self.motion_base_poss_input = motion[:, :3]
     self.motion_base_rots_input = motion[:, 3:7]
     self.motion_base_rots_input = self.motion_base_rots_input[
@@ -194,6 +197,7 @@ def run_sim(
   render,
   line_range,
   renderer: OffscreenRenderer | None = None,
+  root_z_offset: float = 0.0,
 ):
   motion = MotionLoader(
     motion_file=input_file,
@@ -201,6 +205,7 @@ def run_sim(
     output_fps=output_fps,
     device=sim.device,
     line_range=line_range,
+    root_z_offset=root_z_offset,
   )
 
   robot: Entity = scene["robot"]
@@ -315,6 +320,100 @@ def run_sim(
     print(f"Saved replay video to {video_path}")
 
 
+# CSV column order of the dof columns (cols 7+) for each robot's motion CSVs.
+# This is the source robot's MJCF joint-tree order; joints are mapped onto the
+# target robot by name via find_joints(preserve_order=True).
+JOINT_NAMES: dict[str, list[str]] = {
+  "g1": [  # 29 Dof
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+  ],
+  "g1_23dof": [  # 23 Dof
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+  ],
+  "h2": [  # 29 Dof; ankle chain is roll->pitch (reversed vs G1)
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_roll_joint",
+    "left_ankle_pitch_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_roll_joint",
+    "right_ankle_pitch_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+  ],
+}
+
+
 def main(
   robot: str,
   input_file: str,
@@ -324,6 +423,8 @@ def main(
   device: str = "cuda:0",
   render: bool = False,
   line_range: tuple[int, int] | None = None,
+  joint_order: str | None = None,
+  root_z_offset: float = 0.0,
 ):
   """Replay motion from CSV file and output to npz file.
 
@@ -335,77 +436,28 @@ def main(
     device: Device to use.
     render: Whether to render the simulation and save a video.
     line_range: Range of lines to process from the CSV file.
+    joint_order: CSV dof column order to assume ("g1", "g1_23dof", "h2").
+      Defaults to the target robot's own order. Set to the source robot when
+      replaying another robot's CSV (e.g. --robot h2 --joint-order g1).
+    root_z_offset: Offset added to the CSV root height, e.g. to lift a motion
+      recorded for a shorter robot onto a taller one.
   """
   sim_cfg = SimulationCfg()
   sim_cfg.mujoco.timestep = 1.0 / output_fps
-  # Single-env kinematic replay is cheap; contact-heavy poses overflow the
-  # defaults and abort inside mujoco-warp.
+  # Generous constraint buffers: single-env kinematic replay is cheap, and
+  # contact-heavy poses overflow the defaults (SIGABRT in mujoco-warp).
   sim_cfg.nconmax = 100
   sim_cfg.njmax = 500
-  if robot == "g1":    # 29 Dof
+  if robot == "g1":
     scene = Scene(unitree_g1_flat_tracking_env_cfg().scene, device=device)
-    joint_names=[
-      "left_hip_pitch_joint",
-      "left_hip_roll_joint",
-      "left_hip_yaw_joint",
-      "left_knee_joint",
-      "left_ankle_pitch_joint",
-      "left_ankle_roll_joint",
-      "right_hip_pitch_joint",
-      "right_hip_roll_joint",
-      "right_hip_yaw_joint",
-      "right_knee_joint",
-      "right_ankle_pitch_joint",
-      "right_ankle_roll_joint",
-      "waist_yaw_joint",
-      "waist_roll_joint",
-      "waist_pitch_joint",
-      "left_shoulder_pitch_joint",
-      "left_shoulder_roll_joint",
-      "left_shoulder_yaw_joint",
-      "left_elbow_joint",
-      "left_wrist_roll_joint",
-      "left_wrist_pitch_joint",
-      "left_wrist_yaw_joint",
-      "right_shoulder_pitch_joint",
-      "right_shoulder_roll_joint",
-      "right_shoulder_yaw_joint",
-      "right_elbow_joint",
-      "right_wrist_roll_joint",
-      "right_wrist_pitch_joint",
-      "right_wrist_yaw_joint",
-    ]
-    output_dir = "./src/assets/motions/g1"
   elif robot == "g1_23dof":
     scene = Scene(unitree_g1_23dof_flat_tracking_env_cfg().scene, device=device)
-    joint_names=[    # 23 Dof
-      "left_hip_pitch_joint",
-      "left_hip_roll_joint",
-      "left_hip_yaw_joint",
-      "left_knee_joint",
-      "left_ankle_pitch_joint",
-      "left_ankle_roll_joint",
-      "right_hip_pitch_joint",
-      "right_hip_roll_joint",
-      "right_hip_yaw_joint",
-      "right_knee_joint",
-      "right_ankle_pitch_joint",
-      "right_ankle_roll_joint",
-      "waist_yaw_joint",
-      "left_shoulder_pitch_joint",
-      "left_shoulder_roll_joint",
-      "left_shoulder_yaw_joint",
-      "left_elbow_joint",
-      "left_wrist_roll_joint",
-      "right_shoulder_pitch_joint",
-      "right_shoulder_roll_joint",
-      "right_shoulder_yaw_joint",
-      "right_elbow_joint",
-      "right_wrist_roll_joint",
-    ]
-    output_dir = "./src/assets/motions/g1_23dof"
+  elif robot == "h2":
+    scene = Scene(unitree_h2_flat_tracking_env_cfg().scene, device=device)
   else:
     raise ValueError(f"Unsupported robot: {robot}")
+  joint_names = JOINT_NAMES[joint_order if joint_order is not None else robot]
+  output_dir = f"./src/assets/motions/{robot}"
 
   model = scene.compile()
 
@@ -446,6 +498,7 @@ def main(
     render=render,
     line_range=line_range,
     renderer=renderer,
+    root_z_offset=root_z_offset,
   )
 
 

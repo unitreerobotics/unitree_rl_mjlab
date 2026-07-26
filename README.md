@@ -60,6 +60,8 @@ Available velocity tracking tasks:
   - Unitree-G1-Flat
   - Unitree-G1-23Dof-Flat
   - Unitree-H1_2-Flat
+  - Unitree-H2-Flat
+  - Unitree-H2-Rough
   - Unitree-A2-Flat
   - Unitree-R1-Flat
 
@@ -83,8 +85,13 @@ python scripts/csv_to_npz.py \
 --output-name dance1_subject2.npz \
 --input-fps 30 \
 --output-fps 50 \
---robot g1 # g1 or g1_23dof
+--robot g1 # g1, g1_23dof or h2
 ```
+
+H2 motion csv files under `src/assets/motions/h2/` were retargeted from
+[LAFAN1](https://github.com/ubisoft/ubisoft-laforge-animation-dataset) with
+[GMR](https://github.com/YanjieZe/GMR); Unitree's official LAFAN1 retargeting
+release covers H1/H1_2/G1 only.
 
 **npz files will be stored at:**：`src/motions/g1/...`
 
@@ -99,6 +106,8 @@ python scripts/train.py Unitree-G1-Tracking-No-State-Estimation --motion_file=sr
 Available tasks:
   - Unitree-G1-Tracking-No-State-Estimation
   - Unitree-G1-23Dof-Tracking-No-State-Estimation
+  - Unitree-H2-Tracking
+  - Unitree-H2-Tracking-No-State-Estimation
 
 </div>
 
