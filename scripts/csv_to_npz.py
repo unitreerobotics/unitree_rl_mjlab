@@ -1,5 +1,6 @@
 from typing import Any
 
+import mediapy as media
 import numpy as np
 import torch
 import tyro
@@ -308,6 +309,11 @@ def run_sim(
           log[k] = np.stack(log[k], axis=0)
         np.savez(output_path, **log)  # type: ignore[arg-type]
 
+  if render and frames:
+    video_path = output_path[: -len(".npz")] + "_replay.mp4"
+    media.write_video(video_path, frames, fps=output_fps)
+    print(f"Saved replay video to {video_path}")
+
 
 def main(
   robot: str,
@@ -332,6 +338,10 @@ def main(
   """
   sim_cfg = SimulationCfg()
   sim_cfg.mujoco.timestep = 1.0 / output_fps
+  # Single-env kinematic replay is cheap; contact-heavy poses overflow the
+  # defaults and abort inside mujoco-warp.
+  sim_cfg.nconmax = 100
+  sim_cfg.njmax = 500
   if robot == "g1":    # 29 Dof
     scene = Scene(unitree_g1_flat_tracking_env_cfg().scene, device=device)
     joint_names=[
@@ -409,6 +419,7 @@ def main(
       height=480,
       width=640,
       origin_type=ViewerConfig.OriginType.ASSET_ROOT,
+      entity_name="robot",
       distance=2.0,
       elevation=-5.0,
       azimuth=20,
