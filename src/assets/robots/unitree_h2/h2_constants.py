@@ -5,7 +5,7 @@ from pathlib import Path
 import mujoco
 
 from src import SRC_PATH
-from mjlab.actuator import BuiltinPositionActuatorCfg
+from mjlab.actuator import BuiltinPositionActuatorCfg, DelayedActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.os import update_assets
 from mjlab.utils.spec_config import CollisionCfg
@@ -170,17 +170,32 @@ H2_ARTICULATION = EntityArticulationInfoCfg(
 )
 
 
-def get_h2_robot_cfg() -> EntityCfg:
+def get_h2_robot_cfg(actuator_delay: bool = False) -> EntityCfg:
   """Get a fresh H2 robot configuration instance.
 
   Returns a new EntityCfg instance each time to avoid mutation issues when
   the config is shared across multiple places.
+
+  Args:
+    actuator_delay: Wrap every actuator in a DelayedActuatorCfg (0-4 physics
+      steps = 0-20 ms at the 0.005 s timestep) so latency can be domain-
+      randomized. Pair with the dr.sync_actuator_delays reset event; with the
+      default lag of 0 the wrapper is a no-op.
   """
+  articulation = H2_ARTICULATION
+  if actuator_delay:
+    articulation = EntityArticulationInfoCfg(
+      actuators=tuple(
+        DelayedActuatorCfg(base_cfg=a, delay_min_lag=0, delay_max_lag=4)
+        for a in H2_ARTICULATION.actuators
+      ),
+      soft_joint_pos_limit_factor=0.9,
+    )
   return EntityCfg(
     init_state=HOME_KEYFRAME,
     collisions=(FULL_COLLISION,),
     spec_fn=get_spec,
-    articulation=H2_ARTICULATION,
+    articulation=articulation,
   )
 
 

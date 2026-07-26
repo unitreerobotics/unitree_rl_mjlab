@@ -1,8 +1,11 @@
 """Unitree H2 flat tracking environment configurations."""
 
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
+from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 from mjlab.tasks.tracking.mdp import MotionCommandCfg
 
@@ -16,8 +19,14 @@ from src.tasks.tracking.tracking_env_cfg import make_tracking_env_cfg
 def unitree_h2_flat_tracking_env_cfg(
   has_state_estimation: bool = True,
   play: bool = False,
+  robust: bool = False,
 ) -> ManagerBasedRlEnvCfg:
-  """Create Unitree H2 flat terrain tracking configuration."""
+  """Create Unitree H2 flat terrain tracking configuration.
+
+  Args:
+    robust: Enable the deployment-oriented domain randomization set (actuator
+      delay, PD-gain and mass scaling, joint friction, stronger pushes).
+  """
   cfg = make_tracking_env_cfg()
 
   # H2 produces more simultaneous contacts than the G1 defaults allow
@@ -25,7 +34,7 @@ def unitree_h2_flat_tracking_env_cfg(
   cfg.sim.nconmax = 60
   cfg.sim.njmax = 400
 
-  cfg.scene.entities = {"robot": get_h2_robot_cfg()}
+  cfg.scene.entities = {"robot": get_h2_robot_cfg(actuator_delay=robust)}
 
   self_collision_cfg = ContactSensorCfg(
     name="self_collision",
@@ -78,6 +87,59 @@ def unitree_h2_flat_tracking_env_cfg(
 
   cfg.viewer.body_name = "torso_link"
 
+  if robust:
+    # Deployment DR: widen the existing terms and add actuator/inertia
+    # randomization. Reset-mode terms re-sample every episode.
+    cfg.events["push_robot"].params["velocity_range"] = {
+      "x": (-0.7, 0.7),
+      "y": (-0.7, 0.7),
+      "z": (-0.3, 0.3),
+      "roll": (-0.6, 0.6),
+      "pitch": (-0.6, 0.6),
+      "yaw": (-1.0, 1.0),
+    }
+    cfg.events["foot_friction"].params["ranges"] = (0.2, 1.3)
+    cfg.events["encoder_bias"].params["bias_range"] = (-0.02, 0.02)
+    cfg.events["pd_gains"] = EventTermCfg(
+      func=dr.pd_gains,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg("robot"),
+        "kp_range": (0.85, 1.15),
+        "kd_range": (0.85, 1.15),
+        "operation": "scale",
+      },
+    )
+    # No effort_limits DR: mjlab's effort_limits does not unwrap
+    # DelayedActuator (unlike pd_gains), and position-controlled joints
+    # rarely hit their torque limits anyway.
+    cfg.events["body_mass"] = EventTermCfg(
+      func=dr.body_mass,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg("robot", body_names=(".*",)),
+        "ranges": (0.9, 1.1),
+        "operation": "scale",
+      },
+    )
+    cfg.events["joint_friction"] = EventTermCfg(
+      func=dr.joint_friction,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+        "ranges": (0.0, 0.03),
+        "operation": "abs",
+      },
+    )
+    cfg.events["actuator_delay"] = EventTermCfg(
+      func=dr.sync_actuator_delays,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg("robot"),
+        "lag_range": (0, 4),
+      },
+    )
+
   # Modify observations if we don't have state estimation.
   if not has_state_estimation:
     new_actor_terms = {
@@ -98,6 +160,14 @@ def unitree_h2_flat_tracking_env_cfg(
 
     cfg.observations["actor"].enable_corruption = False
     cfg.events.pop("push_robot", None)
+    # Evaluate under nominal physics: strip the robust-DR reset terms.
+    for term in (
+      "pd_gains",
+      "body_mass",
+      "joint_friction",
+      "actuator_delay",
+    ):
+      cfg.events.pop(term, None)
 
     # Disable RSI randomization.
     motion_cmd.pose_range = {}

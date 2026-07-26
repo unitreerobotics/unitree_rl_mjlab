@@ -19,3 +19,13 @@ register_mjlab_task(
   rl_cfg=unitree_h2_tracking_ppo_runner_cfg(),
   runner_cls=MotionTrackingOnPolicyRunner,
 )
+
+register_mjlab_task(
+  task_id="Unitree-H2-Tracking-Robust-No-State-Estimation",
+  env_cfg=unitree_h2_flat_tracking_env_cfg(has_state_estimation=False, robust=True),
+  play_env_cfg=unitree_h2_flat_tracking_env_cfg(
+    has_state_estimation=False, robust=True, play=True
+  ),
+  rl_cfg=unitree_h2_tracking_ppo_runner_cfg(),
+  runner_cls=MotionTrackingOnPolicyRunner,
+)
