@@ -3,7 +3,7 @@
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 
-static Eigen::Quaternionf init_quat;
+static Eigen::Quaternionf init_quat = Eigen::Quaternionf::Identity();
 std::shared_ptr<State_Mimic::MotionLoader_> State_Mimic::motion = nullptr;
 
 
@@ -68,8 +68,13 @@ REGISTER_OBSERVATION(motion_anchor_ori_b)
     auto real_quat_w = robot_quat_w(env);
     auto ref_quat_w  = motion_anchor_quat_w(loader);
 
-    auto rot_ = (init_quat * ref_quat_w).conjugate() * real_quat_w;
-    auto rot = rot_.toRotationMatrix().transpose();
+    const Eigen::Quaternionf rot_ = (init_quat * ref_quat_w).conjugate() * real_quat_w;
+    // NOT `auto`: toRotationMatrix() returns a temporary and .transpose() is a lazy
+    // expression that only holds a reference to it, so `auto rot = ...transpose()` keeps a
+    // reference to a destroyed temporary and the six values below are read from freed stack
+    // memory. It can look plausible (stale values that resemble a rotation) and then fail
+    // differently on another compiler or platform.
+    const Eigen::Matrix3f rot = rot_.toRotationMatrix().transpose();
 
     Eigen::Matrix<float, 6, 1> data;
     data << rot(0, 0), rot(0, 1), rot(1, 0), rot(1, 1), rot(2, 0), rot(2, 1);
@@ -147,6 +152,20 @@ void State_Mimic::enter()
     }
 
     motion = motion_; // set for specific motion
+
+    // Yaw-align the reference to the robot BEFORE env->reset(), because reset computes the
+    // observations and motion_anchor_ori_b reads init_quat. Doing it inside the policy
+    // thread (below) left the first observation built from a stale init_quat.
+    env->robot->update();
+    motion->reset(env->robot->data, time_range_[0]);
+    {
+        const Eigen::Matrix3f ref_yaw =
+            isaaclab::yawQuaternion(motion->root_quaternion()).toRotationMatrix();
+        const Eigen::Matrix3f robot_yaw =
+            isaaclab::yawQuaternion(robot_quat_w(env.get())).toRotationMatrix();
+        init_quat = Eigen::Quaternionf(robot_yaw * ref_yaw.transpose());
+    }
+
     env->reset();
     // Start policy thread
     policy_thread_running = true;
@@ -159,11 +178,7 @@ void State_Mimic::enter()
         const auto start = clock::now();
         auto sleepTill = start + dt;
 
-        motion->reset(env->robot->data, time_range_[0]);
-        auto ref_yaw = isaaclab::yawQuaternion(motion->root_quaternion()).toRotationMatrix();
-        auto robot_yaw = isaaclab::yawQuaternion(robot_quat_w(env.get())).toRotationMatrix();
-        init_quat = robot_yaw * ref_yaw.transpose();
-        env->reset();
+        env->reset();   // init_quat is set in enter(), before observations are built
 
         while (policy_thread_running)
         {
