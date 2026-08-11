@@ -10,18 +10,18 @@ class State_FixStand : public FSMState
 {
 public:
     State_FixStand(int state, std::string state_string = "FixStand") 
-    : FSMState(state, state_string) 
+    : FSMState(state, state_string), state_string_(std::move(state_string))
     {
-        ts_ = param::config["FSM"]["FixStand"]["ts"].as<std::vector<float>>();
-        qs_ = param::config["FSM"]["FixStand"]["qs"].as<std::vector<std::vector<float>>>();
+        ts_ = param::config["FSM"][state_string_]["ts"].as<std::vector<float>>();
+        qs_ = param::config["FSM"][state_string_]["qs"].as<std::vector<std::vector<float>>>();
         assert(ts_.size() == qs_.size());
     }
 
     void enter()
     {
         // set gain
-        static auto kp = param::config["FSM"]["FixStand"]["kp"].as<std::vector<float>>();
-        static auto kd = param::config["FSM"]["FixStand"]["kd"].as<std::vector<float>>();
+        auto kp = param::config["FSM"][state_string_]["kp"].as<std::vector<float>>();
+        auto kd = param::config["FSM"][state_string_]["kd"].as<std::vector<float>>();
         for(int i(0); i < kp.size(); ++i)
         {
             auto & motor = lowcmd->msg_.motor_cmd()[i];
@@ -51,6 +51,7 @@ public:
     }
 
 private:
+    std::string state_string_;
     double t0_;
     std::vector<float> ts_;
     std::vector<std::vector<float>> qs_;

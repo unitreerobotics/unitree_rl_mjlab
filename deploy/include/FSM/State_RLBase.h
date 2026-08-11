@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+
 #include "FSMState.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/terminations.h"
@@ -61,6 +64,16 @@ private:
 
     std::thread policy_thread;
     bool policy_thread_running = false;
+
+    bool use_hybrid_control_ = false;
+    std::vector<int> leg_joint_ids_;
+    std::vector<int> wheel_joint_ids_;
+
+    std::string wheel_command_mode_ = "velocity"; // velocity | torque
+    float wheel_kd_ = 2.0f;
+    float wheel_vel_limit_ = 40.0f;
+    float wheel_tau_limit_ = 12.0f;
+    float wheel_tau_ff_ = 0.0f;
 };
 
 REGISTER_FSM(State_RLBase)

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import cast
 
 import torch
@@ -13,6 +14,13 @@ from mjlab.rl.exporter_utils import (
 )
 from mjlab.rl.runner import MjlabOnPolicyRunner
 from mjlab.tasks.tracking.mdp import MotionCommand
+
+
+def _checkpoint_suffix(path: str) -> str | None:
+  model_path = Path(path)
+  if model_path.stem.startswith("model_"):
+    return model_path.stem.removeprefix("model_")
+  return None
 
 
 class _OnnxMotionModel(nn.Module):
@@ -92,8 +100,15 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
   def save(self, path: str, infos=None):
     super().save(path, infos)
     policy_path = path.split("model")[0]
-    filename = policy_path.split("/")[-2] + ".onnx"
+    suffix = _checkpoint_suffix(path)
+    run_filename = policy_path.split("/")[-2] + ".onnx"
+    filename = (
+      f"{Path(run_filename).stem}_{suffix}.onnx" if suffix is not None else run_filename
+    )
     self.export_motion_policy_to_onnx(policy_path, filename)
+    self.export_motion_policy_to_onnx(policy_path, run_filename)
+    policy_filename = f"policy_{suffix}.onnx" if suffix is not None else "policy.onnx"
+    self.export_policy_to_onnx(policy_path, policy_filename)
     self.export_policy_to_onnx(policy_path, "policy.onnx")
     run_name: str = (
       wandb.run.name if self.logger.logger_type == "wandb" and wandb.run else "local"
@@ -109,8 +124,14 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
       }
     )
     attach_metadata_to_onnx(os.path.join(policy_path, filename), metadata)
+    attach_metadata_to_onnx(os.path.join(policy_path, run_filename), metadata)
+    attach_metadata_to_onnx(os.path.join(policy_path, policy_filename), metadata)
+    attach_metadata_to_onnx(os.path.join(policy_path, "policy.onnx"), metadata)
     if self.logger.logger_type in ["wandb"]:
       wandb.save(policy_path + filename, base_path=os.path.dirname(policy_path))
+      wandb.save(policy_path + run_filename, base_path=os.path.dirname(policy_path))
+      wandb.save(policy_path + policy_filename, base_path=os.path.dirname(policy_path))
+      wandb.save(policy_path + "policy.onnx", base_path=os.path.dirname(policy_path))
       if self.registry_name is not None:
         wandb.run.use_artifact(self.registry_name)  # type: ignore
         self.registry_name = None

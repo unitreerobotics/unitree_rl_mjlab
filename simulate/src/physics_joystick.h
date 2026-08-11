@@ -14,8 +14,7 @@ public:
 	{
 		js_ = std::make_unique<Joystick>(device);
 		if(!js_->isFound()) {
-			std::cout << "Error: Joystick open failed." << std::endl;
-			exit(1);
+			std::cout << "Warning: Joystick open failed. Simulating without a physical joystick." << std::endl;
 		}
         max_value_ = 1 << (bits - 1);
 	}
@@ -56,8 +55,7 @@ public:
 	{
 		js_ = std::make_unique<Joystick>(device);
 		if(!js_->isFound()) {
-			std::cout << "Error: Joystick open failed." << std::endl;
-			exit(1);
+			std::cout << "Warning: Joystick open failed. Simulating without a physical joystick." << std::endl;
 		}
         max_value_ = 1 << (bits - 1);
 	}

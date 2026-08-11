@@ -15,6 +15,7 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <memory>
 #include <iomanip>
+#include <sstream>
 
 /* ---------- logger ---------- */
 namespace spdlog
@@ -39,6 +40,9 @@ inline void create_logger(std::string log_path)
 namespace param
 {
 inline std::string VERSION = "1.0.0.1";
+inline std::string start_mode = "gamepad";
+inline std::string command_mode;              // "", "patrol", or "fixed"
+inline std::vector<float> command_override;   // [vx, vy, wz] when command_mode == "fixed"
 inline std::filesystem::path bin_path;
 inline std::filesystem::path proj_dir;
 inline std::filesystem::path config_dir;
@@ -130,11 +134,41 @@ inline po::variables_map helper(int argc, char** argv)
         ("version,v", "show version")
         ("log", "record log file")
         ("network,n", po::value<std::string>()->default_value(""), "dds network interface")
+        ("start-mode,s", po::value<std::string>()->default_value("gamepad"), "FSM control mode: auto | keyboard | gamepad")
+        ("command,c", po::value<std::string>()->default_value(""), "velocity command: 'vx,vy,wz' or 'patrol'")
         ;
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
+
+    start_mode = vm["start-mode"].as<std::string>();
+
+    // Parse --command option
+    std::string cmd_str = vm["command"].as<std::string>();
+    if (!cmd_str.empty())
+    {
+        if (cmd_str == "patrol")
+        {
+            command_mode = "patrol";
+        }
+        else
+        {
+            // Parse "vx,vy,wz"
+            std::istringstream ss(cmd_str);
+            std::string token;
+            while (std::getline(ss, token, ','))
+            {
+                command_override.push_back(std::stof(token));
+            }
+            if (command_override.size() != 3)
+            {
+                spdlog::error("--command expects 'vx,vy,wz' (3 values) or 'patrol', got '{}'", cmd_str);
+                exit(1);
+            }
+            command_mode = "fixed";
+        }
+    }
 
     if (vm.count("help"))
     {

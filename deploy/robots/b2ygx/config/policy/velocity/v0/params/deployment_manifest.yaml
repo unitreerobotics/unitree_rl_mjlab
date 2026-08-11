@@ -1,0 +1,12 @@
+robot: b2ygx
+task: Unitree-B2YGX-Flat
+installed_at: '2026-05-24T11:44:35+08:00'
+play_verified: true
+checkpoint: logs/rsl_rl/b2ygx_velocity/2026-05-24_10-17-00/model_4000.pt
+source_policy: logs/rsl_rl/b2ygx_velocity/2026-05-24_10-17-00/policy_4000.onnx
+installed_policy: deploy/robots/b2ygx/config/policy/velocity/v0/exported/policy.onnx
+deploy_yaml: deploy/robots/b2ygx/config/policy/velocity/v0/params/deploy.yaml
+required_manual_checks:
+- joint_ids_map matches the real B2YGX SDK motor order
+- robot is suspended before entering Velocity
+- network interface is the robot-facing interface

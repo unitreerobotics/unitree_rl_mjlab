@@ -1,0 +1,77 @@
+joint_ids_map: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+step_dt: 0.02
+stiffness: [20, 20, 40, 20, 20, 40, 20, 20, 40, 20, 20, 40, 0, 0, 0, 0]
+damping:   [ 1,  1,  2,  1,  1,  2,  1,  1,  2,  1,  1,  2, 4, 4, 4, 4]
+default_joint_pos: [0.1,0.9,-1.8, -0.1,0.9,-1.8, 0.1,0.9,-1.8, -0.1,0.9,-1.8, 0,0,0,0]
+
+commands:
+  base_velocity:
+    input_source: joystick # joystick | fixed | keyboard
+    fixed_command: [0.0, 0.0, 0.0] # [vx, vy, wz], used when input_source=fixed
+    keyboard:
+      lin_vel_x: 0.6 # m/s, key: w/s
+      lin_vel_y: 0.3 # m/s, key: a/d
+      ang_vel_z: 0.6 # rad/s, key: q/e
+    ranges:
+      lin_vel_x: [-0.5, 0.8]
+      lin_vel_y: [-0.4, 0.4]
+      ang_vel_z: [-0.6, 0.6]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip: null
+    joint_names: [FR_hip_joint, FR_thigh_joint, FR_calf_joint, FL_hip_joint, FL_thigh_joint, FL_calf_joint, RR_hip_joint, RR_thigh_joint, RR_calf_joint, RL_hip_joint, RL_thigh_joint, RL_calf_joint]
+    scale: [0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35]
+    offset: [0.1,0.9,-1.8, -0.1,0.9,-1.8, 0.1,0.9,-1.8, -0.1,0.9,-1.8]
+    joint_ids: [0,1,2,3,4,5,6,7,8,9,10,11]
+
+observations:
+  base_ang_vel:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  projected_gravity:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  velocity_commands:
+    params: { command_name: base_velocity }
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  joint_pos_rel:
+    params:
+      asset_cfg:
+        joint_ids: [0,1,2,3,4,5,6,7,8,9,10,11]
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  joint_vel_rel:
+    params:
+      asset_cfg:
+        joint_ids: [0,1,2,3,4,5,6,7,8,9,10,11]
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  wheel_joint_pos_rel:
+    params:
+      asset_cfg:
+        joint_ids: [12,13,14,15]
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  wheel_joint_vel_rel:
+    params:
+      asset_cfg:
+        joint_ids: [12,13,14,15]
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  last_action:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
