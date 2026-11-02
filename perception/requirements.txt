@@ -4,3 +4,5 @@ numpy
 mujoco==3.3.6
 cyclonedds==0.10.2
 pytest
+onnxruntime  # tools/climb_offline.py
+pyyaml       # tools/climb_offline.py
