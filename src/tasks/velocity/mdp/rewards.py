@@ -20,24 +20,77 @@ if TYPE_CHECKING:
 _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
+def _velocity_xy(env: ManagerBasedRlEnv, command_name: str, asset: Entity, heading_frame: bool) -> torch.Tensor:
+  """The base's xy velocity in the frame the command is meant in.
+
+  The body frame by default. With heading_frame, for the command term's heading-held approach
+  walks (ApproachVelocityCommand: is_approach_env and is_heading_env) the frame of the heading
+  to hold instead: a robot that turns away from it and walks on then moves the wrong way and
+  loses the reward. In the body frame it kept all of it, so the perceptive policy (checkpoint
+  15300) turned 30-40 deg away just before a step at no cost from these terms.
+  """
+  vel_b = asset.data.root_link_lin_vel_b[:, :2]
+  if not heading_frame:
+    return vel_b
+  term = env.command_manager.get_term(command_name)
+  held = getattr(term, "is_approach_env", None)
+  if held is None:
+    return vel_b
+  held = held & term.is_heading_env
+  vel_w = asset.data.root_link_lin_vel_w[:, :2]
+  c, s = torch.cos(term.heading_target), torch.sin(term.heading_target)
+  vel_h = torch.stack((c * vel_w[:, 0] + s * vel_w[:, 1], -s * vel_w[:, 0] + c * vel_w[:, 1]), dim=1)
+  return torch.where(held.unsqueeze(1), vel_h, vel_b)
+
+
 def track_linear_velocity(
   env: ManagerBasedRlEnv,
   std: float,
   command_name: str,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+  z_weight: float = 2.0,
+  heading_frame: bool = False,
 ) -> torch.Tensor:
   """Reward for tracking the commanded base linear velocity.
 
-  The commanded z velocity is assumed to be zero.
+  The commanded z velocity is assumed to be zero. z_weight: how much the base's vertical
+  velocity counts as error. On steps that error is the climb itself, so stepping up costs
+  reward; the R1's step tasks set it to 0. heading_frame: see _velocity_xy.
   """
   asset: Entity = env.scene[asset_cfg.name]
   command = env.command_manager.get_command(command_name)
   assert command is not None, f"Command '{command_name}' not found."
   actual = asset.data.root_link_lin_vel_b
-  xy_error = torch.sum(torch.square(command[:, :2] - actual[:, :2]), dim=1)
+  xy_error = torch.sum(torch.square(command[:, :2] - _velocity_xy(env, command_name, asset, heading_frame)), dim=1)
   z_error = torch.square(actual[:, 2])
-  lin_vel_error = xy_error + (2 * z_error)
+  lin_vel_error = xy_error + (z_weight * z_error)
   return torch.exp(-lin_vel_error / std**2)
+
+
+def command_progress(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  min_command: float = 0.2,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+  heading_frame: bool = False,
+) -> torch.Tensor:
+  """Progress along the commanded direction, as a fraction of the commanded speed (0 to 1).
+
+  1 when the base moves in the commanded xy direction at least as fast as commanded, 0 when
+  it stands or moves away. Without it, stepping in place before a step kept most of
+  track_linear_velocity's reward (exp(-v^2 / std^2): 70 % at 0.3 m/s with std 0.5), so the
+  policy hesitated at edges. Zero for commands slower than min_command (standing, turning).
+  heading_frame: see _velocity_xy.
+  """
+  asset: Entity = env.scene[asset_cfg.name]
+  command = env.command_manager.get_command(command_name)
+  assert command is not None, f"Command '{command_name}' not found."
+  cmd_xy = command[:, :2]
+  speed = torch.norm(cmd_xy, dim=1)
+  direction = cmd_xy / speed.clamp(min=1e-6).unsqueeze(1)
+  along = torch.sum(_velocity_xy(env, command_name, asset, heading_frame) * direction, dim=1)
+  progress = torch.clamp(along / speed.clamp(min=1e-6), 0.0, 1.0)
+  return progress * (speed > min_command).float()
 
 
 def track_angular_velocity(
@@ -193,26 +246,41 @@ def feet_clearance_terrain(
   command_threshold: float = 0.1,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
   only_below: bool = False,
+  behind_limit: float | None = None,
 ) -> torch.Tensor:
   """feet_clearance with the height taken above the ground under each foot, not above z = 0.
 
   sensor_names: one downward RayCastSensor per foot, in the order of asset_cfg's sites; the
   highest hit under the foot is its ground. On steps and pallets z = 0 is not the ground.
   only_below: cost only for a foot lower than target_height, so lifting it higher is free.
+  behind_limit: if set, hits more than this far behind the foot (along its horizontal
+  velocity) are not its ground. With a sensor grid reaching ahead of the toe, a swinging foot
+  then has to clear an edge before its toe reaches it, not only once it is above it: at the
+  EUR pallet a low toe went under the top board and hooked (every fall in the offline tests).
+  Behind, the limit keeps a foot stepping down from being held to the higher level.
   """
   asset: Entity = env.scene[asset_cfg.name]
-  foot_z = asset.data.site_pos_w[:, asset_cfg.site_ids, 2]  # [B, N]
+  foot_pos = asset.data.site_pos_w[:, asset_cfg.site_ids]  # [B, N, 3]
+  foot_z = foot_pos[..., 2]  # [B, N]
+  foot_vel_xy = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2]  # [B, N, 2]
+  vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
   ground = []
   for i, name in enumerate(sensor_names):
     sensor: RayCastSensor = env.scene[name]
     hit_z = sensor.data.hit_pos_w[..., 2]  # [B, R]
-    hit_z = torch.where(sensor.data.distances >= 0, hit_z, torch.full_like(hit_z, -torch.inf))
+    valid = sensor.data.distances >= 0
+    if behind_limit is not None:
+      heading = foot_vel_xy[:, i] / vel_norm[:, i].clamp(min=1e-6).unsqueeze(1)  # [B, 2]
+      rel = sensor.data.hit_pos_w[..., :2] - foot_pos[:, i, None, :2]  # [B, R, 2]
+      along = torch.sum(rel * heading.unsqueeze(1), dim=-1)  # [B, R]
+      # A foot at rest has no direction: all its rays count (its cost is ~0 anyway).
+      ahead = (along >= -behind_limit) | (vel_norm[:, i] < 1e-3).unsqueeze(1)
+      valid = valid & ahead
+    hit_z = torch.where(valid, hit_z, torch.full_like(hit_z, -torch.inf))
     g = hit_z.max(dim=1).values
     # No hit at all: no cost for this foot.
     ground.append(torch.where(torch.isinf(g), foot_z[:, i] - target_height, g))
   clearance = foot_z - torch.stack(ground, dim=1)  # [B, N]
-  foot_vel_xy = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2]  # [B, N, 2]
-  vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
   error = target_height - clearance
   error = torch.clamp(error, min=0.0) if only_below else torch.abs(error)
   cost = torch.sum(error * vel_norm, dim=1)  # [B]
@@ -240,6 +308,32 @@ def feet_stumble(
   f_xy = torch.norm(force[..., :2], dim=-1)
   f_z = torch.abs(force[..., 2])
   return torch.sum((f_xy > min_force) & (f_xy > ratio * f_z), dim=1).float()
+
+
+def feet_pushed_down(
+  env: ManagerBasedRlEnv,
+  sensor_name: str,
+  min_force: float = 5.0,
+  max_force: float = 200.0,
+) -> torch.Tensor:
+  """Penalize terrain pushing a foot down: a toe hooked under a pallet's top board.
+
+  The ground only ever pushes a foot up; a downward net force on a foot comes from something
+  above it. Every fall of the perceptive policies at the EUR pallet began with a toe under the
+  top board (offline, 25 of 26 falls), and foot_stumble, which counts mostly horizontal forces,
+  does not see it (the board pushes down). Per foot: the downward force above min_force, in
+  units of 100 N, capped at max_force.
+
+  sensor_name: a contact sensor with reduce="netforce" (forces in the world frame). Its force
+  is the foot's on the terrain: negative z when the ground carries the foot (checked: 99.99 %
+  of in-contact samples standing and walking on the training terrain), so positive z is
+  the terrain pushing the foot down.
+  """
+  sensor: ContactSensor = env.scene[sensor_name]
+  force = sensor.data.force  # [B, N, 3]
+  assert force is not None
+  down = torch.clamp(force[..., 2] - min_force, min=0.0, max=max_force - min_force)
+  return torch.sum(down, dim=1) / 100.0
 
 
 def feet_gait(

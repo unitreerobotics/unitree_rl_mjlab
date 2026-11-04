@@ -1,8 +1,9 @@
 """Unitree R1 velocity environment configurations."""
 
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import mjlab.terrains as terrain_gen
+from src.assets.robots.unitree_r1.r1_constants import FULL_COLLISION
 from src.assets.robots import (
   R1_ACTION_SCALE,
   get_r1_robot_cfg,
@@ -20,6 +21,7 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 from mjlab.utils.noise import ConstantNoiseCfg, NoiseModelWithAdditiveBiasCfg, UniformNoiseCfg
 from src.tasks.velocity import mdp as r1_mdp
+from src.tasks.velocity.euro_pallet_terrain import EuroPalletRingTerrainCfg
 from src.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
 
 # Steps up to 20 cm: an EUR pallet is 14.4 cm high, the rest is margin. The "pallet" terrains
@@ -331,12 +333,19 @@ def unitree_r1_steps_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   return cfg
 
 
+# Unitree-R1-Perceptive from scratch (False: steps from 2 cm, as the curriculum starts) or
+# fine-tuned from a checkpoint with train.py --init-actor-from (True: steps of 8-20 cm).
+PERCEPTIVE_FINETUNE = False
+
+
 def unitree_r1_perceptive_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Create Unitree R1 perceptive step-up configuration (EUR pallet, stairs up to 20 cm).
 
   As Unitree-R1-Steps, but the actor also gets the height scan the way the perception chain
   (depth camera -> height map) will deliver it: 10 Hz updates, 60-160 ms late, noisy, with
-  filled holes and an offset per episode. The critic keeps the exact scan.
+  filled holes and an offset per episode. The critic keeps the exact scan. Beside the box
+  steps it trains on rings of real EUR pallets (open fronts, board gaps), with rewards for
+  stepping up rather than stopping before an edge.
   """
   cfg = unitree_r1_steps_env_cfg(play=play)
 
@@ -367,16 +376,98 @@ def unitree_r1_perceptive_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # 8 cm costs: a pallet's 14.4 cm need the foot higher, which the symmetric cost punished.
   cfg.rewards["foot_clearance"].params["target_height"] = 0.08
   cfg.rewards["foot_clearance"].params["only_below"] = True
+  # ... and the 8 cm are kept above an edge before the toe reaches it: the foot's ground rays
+  # reach 0.2 m ahead of the ankle (toe at 0.125 m), not 0.1 m, and only rays at most 0.1 m
+  # behind the foot count, so stepping down is judged as before. At the EUR pallet a low toe
+  # went under the top board and hooked: all falls in the offline tests (v2, v3).
+  cfg.rewards["foot_clearance"].params["behind_limit"] = 0.1
+  cfg.scene.sensors = tuple(
+    replace(s, pattern=GridPatternCfg(size=(0.4, 0.1), resolution=0.1))
+    if s.name.endswith("_foot_ground") else s
+    for s in cfg.scene.sensors
+  )
+
+  # Stepping up instead of stopping before the step. v3, offline: from 0.6 m before an edge
+  # down to 0.08 m/s in the last 0.15 m, 2.5 s there (flat: 0.44 m/s, 0.3 s), sideways drift
+  # going on meanwhile, so it often went past the step along its edge.
+  # - The climb's vertical speed no longer counts as tracking error (it was 2 vz^2).
+  # - Sharper tracking: standing at 0.3 m/s commanded kept 70 % of the reward with std 0.5,
+  #   with 0.25 it keeps 24 %; sideways drift costs more as well.
+  # - Progress along the command is rewarded; stepping in place earns none of it.
+  cfg.rewards["track_linear_velocity"].params["std"] = 0.25
+  cfg.rewards["track_linear_velocity"].params["z_weight"] = 0.0
+  cfg.rewards["command_progress"] = RewardTermCfg(
+    func=r1_mdp.command_progress,
+    weight=0.5,
+    params={"command_name": "twist", "min_command": 0.2},
+  )
+
+  # Holding the direction. Checkpoint 15300 (offline, block, heading steering): ignored turn
+  # commands of -0.15 to -0.27 rad/s on flat ground (a constant 4-8 deg off its heading, always
+  # to the left), turned left at +0.4 rad/s against -0.46 commanded in the last 0.5 m before the
+  # edge and met it at 30-40 deg, in 20 of 20 runs whatever the start. Both terms above took
+  # the velocity in the body frame, so turning away and walking on cost them nothing.
+  # - For the heading-held approach walks they take it in the frame of the heading to hold.
+  # - The yaw rate term stays as it was apart from std 0.5: tightened to std 0.35 / weight 1.5
+  #   (resumed from 15800) the policy got worse at it within 750 iterations (term -15 %, falls
+  #   0.11 -> 0.19): the pelvis yaws +-0.25 rad/s with every step, so even a perfect walk earns
+  #   only ~60 % there and the signal is mostly noise.
+  cfg.rewards["track_linear_velocity"].params["heading_frame"] = True
+  cfg.rewards["command_progress"].params["heading_frame"] = True
+  cfg.rewards["track_angular_velocity"].params["std"] = 0.5
+  cfg.rewards["track_angular_velocity"].weight = 1.0
+
+  # A toe under a pallet's top board: the board pushes the foot down, which foot_stumble (mostly
+  # horizontal forces) does not count; it was the start of every offline fall at the EUR pallet.
+  # 100 N down for 0.2 s costs ~1, a quarter of a fall's is_terminated (-200 * 0.02), and comes
+  # before the fall, where it points at the cause.
+  cfg.rewards["foot_pushed_down"] = RewardTermCfg(
+    func=r1_mdp.feet_pushed_down,
+    weight=-5.0,
+    params={"sensor_name": "feet_ground_contact"},
+  )
+
+  # Less hold of the fixed gait clock on the climb: stepping in place before an edge earned the
+  # full 0.5 of foot_gait, as much as command_progress, and a step up out of rhythm lost it.
+  cfg.rewards["foot_gait"].weight = 0.3
+  # action_rate_l2 was the largest single term (-0.81/s), nearly all of it the exploration noise
+  # (24 joints, std 0.55: 2 * 24 * 0.55^2 * 0.05 = 0.73), so it mostly made exploring expensive.
+  cfg.rewards["action_rate_l2"].weight = -0.03
+
+  # Real EUR pallets beside the box steps: open fronts under the top board, gaps between the
+  # boards (euro_pallet_terrain.py). Every offline fall at the test pallet began with a toe
+  # under its top board; on a closed box of the same size v3 did not fall once.
+  # Pallets collide only with the legs (collision bit 2, PALLET_CONTYPE): with all 31 robot
+  # geoms against the pallets' boxes mujoco_warp left its direct broad phase and stepped 23x
+  # slower (RTX 4060, 1024 envs: 646 instead of 15k env-steps/s). Trunk and arms meet a pallet
+  # only in a fall, which ends the episode.
+  legs = r"^(left|right)_(foot[1-7]|shin|knee|linkage_brace)_collision$"
+  cfg.scene.entities["robot"].collisions = (
+    replace(FULL_COLLISION, contype={legs: 3, ".*_collision": 1}, conaffinity={legs: 3, ".*_collision": 1}),
+  )
+  cfg.scene.terrain.terrain_generator.sub_terrains = {
+    **cfg.scene.terrain.terrain_generator.sub_terrains,
+    "euro_pallet": EuroPalletRingTerrainCfg(proportion=0.15),
+  }
 
   if not play:
-    # Fine-tuning for the pallet: steps of 8-20 cm in every row (from 2-20 cm), so most
-    # robots train near 14.4 cm. Training from scratch wants the 2 cm rows back.
-    generator = cfg.scene.terrain.terrain_generator
-    generator.sub_terrains = {
-      name: replace(sub, step_height_range=(0.08, 0.20))
-      if hasattr(sub, "step_height_range") else sub
-      for name, sub in generator.sub_terrains.items()
-    }
+    # A share of the commands as an operator walks the robot onto a pallet: 0.3-0.6 m/s
+    # straight on (r1_mdp.ApproachVelocityCommandCfg). v3 made 1 of 16 offline at 0.3-0.4 m/s.
+    twist = cfg.commands["twist"]
+    cfg.commands["twist"] = r1_mdp.ApproachVelocityCommandCfg(
+      **{f.name: getattr(twist, f.name) for f in fields(twist) if f.init},
+      approach_prob=0.3,
+    )
+
+    # Fine-tuning from a checkpoint (PERCEPTIVE_FINETUNE): steps of 8-20 cm in every row (from
+    # 2-20 cm), so most robots train near 14.4 cm. From scratch the 2 cm rows stay.
+    if PERCEPTIVE_FINETUNE:
+      generator = cfg.scene.terrain.terrain_generator
+      generator.sub_terrains = {
+        name: replace(sub, step_height_range=(0.08, 0.20))
+        if hasattr(sub, "step_height_range") else sub
+        for name, sub in generator.sub_terrains.items()
+      }
     # Progress after 3 m: out of a pallet pyramid from its centre (0.6 + 3 x 0.8 m), not half
     # the 8 m sub-terrain. With random commands few robots made 4 m in 20 s.
     cfg.curriculum["terrain_levels"].params["move_up_distance"] = 3.0

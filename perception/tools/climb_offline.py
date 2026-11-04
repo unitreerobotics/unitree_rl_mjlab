@@ -156,7 +156,8 @@ def attempt(scene: Scene, ctrl: Controller, start: dict, scan_latency: float, st
     heading = FACING + alpha
     direction = np.array([math.cos(heading), math.sin(heading)])
     left = np.array([-direction[1], direction[0]])
-    start_xy = np.array([start["offset"] + start["distance"] * math.tan(alpha), EDGE_Y - start["distance"]])
+    start_xy = np.array([PALLET_CENTRE[0] + start["offset"] + start["distance"] * math.tan(alpha),
+                         EDGE_Y - start["distance"]])
     scene.place(start_xy, heading)
     ctrl.reset()
 

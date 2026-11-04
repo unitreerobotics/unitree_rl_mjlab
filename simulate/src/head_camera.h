@@ -269,8 +269,19 @@ private:
     {
         // The NVIDIA device first, then the default display (with the desktop itself on NVIDIA, as
         // in PRIME "nvidia" mode, only the latter may give a context).
+        // If the default display is itself NVIDIA (desktop on NVIDIA), it goes first: on an RTX 4060
+        // with driver 580, a context on the device display was made but mjr_makeContext then crashed
+        // inside libnvidia-eglcore.
         std::string why;
-        for (EGLDisplay dpy : {discrete_display(), eglGetDisplay(EGL_DEFAULT_DISPLAY)}) {
+        EGLDisplay def = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        bool def_nvidia = false;
+        if (def != EGL_NO_DISPLAY && eglInitialize(def, nullptr, nullptr)) {
+            const char* vendor = eglQueryString(def, EGL_VENDOR);
+            def_nvidia = vendor && std::string(vendor).find("NVIDIA") != std::string::npos;
+        }
+        const auto order = def_nvidia ? std::vector<EGLDisplay>{def, discrete_display()}
+                                      : std::vector<EGLDisplay>{discrete_display(), def};
+        for (EGLDisplay dpy : order) {
             if (dpy == EGL_NO_DISPLAY || !eglInitialize(dpy, nullptr, nullptr)) continue;
             std::string reason;
             if (make_context(dpy, reason)) break;

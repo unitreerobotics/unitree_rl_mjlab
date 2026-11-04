@@ -164,7 +164,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--stereo", type=int, default=0, choices=(0, 1))
     ap.add_argument("--out", type=Path, default=Path("eval_climb"))
+    ap.add_argument("--target", choices=("pallet", "block"), default="pallet",
+                    help="the EUR pallet or the solid block of its outline beside it (eval_sim.TARGETS)")
     args = ap.parse_args()
+    os.environ["R1_CLIMB_TARGET"] = args.target    # eval_climb.py, started per attempt, reads it
 
     if not os.environ.get("DISPLAY"):
         sys.exit("no DISPLAY: the simulator needs a desktop")

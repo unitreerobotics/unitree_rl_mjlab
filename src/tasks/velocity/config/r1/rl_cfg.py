@@ -56,5 +56,8 @@ def unitree_r1_steps_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 def unitree_r1_perceptive_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   """Create RL runner configuration for Unitree R1 perceptive step-up task."""
-  # Trained from scratch: the actor's input differs from the flat policy's.
+  # The first run (2026-11-02) from scratch: the actor's input differs from the flat policy's.
+  # Since 2026-11-03 started from its checkpoint 15800 (--init-actor-from) with mirror symmetry
+  # (SymmetricVelocityOnPolicyRunner) and the changed rewards: 15001 iterations, ~17.5 h on the
+  # laptop.
   return replace(unitree_r1_ppo_runner_cfg(), experiment_name="r1_perceptive", max_iterations=15001)

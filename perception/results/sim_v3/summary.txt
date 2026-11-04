@@ -1,0 +1,9 @@
+20 attempts: success 4, fall 8, stuck 1, missed 7
+success rate 4/20 = 20 % (without setup/error)
+  peak_rise                median    0.07 m, min    0.00, max    0.15
+  max_tilt_deg             median   12.25 deg, min    3.70, max   52.80
+  walk_s                   median   11.80 s, min    6.26, max   18.17
+  latency_ms_median        median   15.25 ms, min   14.40, max   77.10
+  pallet_error_cm_median   median    0.30 cm, min    0.30, max    2.70
+  maps_per_s               median   11.35 /s, min   10.00, max   13.10
+  refused walking commands: {'7301': 2}

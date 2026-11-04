@@ -156,7 +156,7 @@ def main() -> None:
     alpha = math.radians(args.angle)
     heading = FACING + alpha
     direction = np.array([math.cos(heading), math.sin(heading)])
-    start = np.array([args.offset + args.distance * math.tan(alpha), EDGE_Y - args.distance])
+    start = np.array([PALLET_CENTRE[0] + args.offset + args.distance * math.tan(alpha), EDGE_Y - args.distance])
 
     def go_to(target_xy, target_yaw, timeout, tol_m=0.10, tol_yaw=math.radians(3)) -> bool:
         t_end, settled = time.time() + timeout, 0

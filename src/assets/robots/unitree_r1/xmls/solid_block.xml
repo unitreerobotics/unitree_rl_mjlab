@@ -1,0 +1,12 @@
+<!-- A solid block with the EUR pallet's outline (1200 x 800 x 144 mm), next to it in the same row:
+     the step the training's terrains have (closed front, no gaps), for comparing walks over the
+     pallet with walks over a plain step. Centre (1.5, 1.6): 0.3 m right of the pallet, starts at
+     least 0.5 m from the KUKA base (x >= 2.6) for perception/tools/eval_climb.py (R1_CLIMB_TARGET=block). -->
+<mujoco model="solid_block">
+  <worldbody>
+    <body name="solid_block" pos="1.5 1.6 0">
+      <geom name="solid_block" type="box" pos="0 0 0.072" size="0.6 0.4 0.072"
+            rgba="0.55 0.57 0.6 1" friction="0.7" group="1" />
+    </body>
+  </worldbody>
+</mujoco>

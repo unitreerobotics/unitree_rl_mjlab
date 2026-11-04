@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import threading
 import time
@@ -30,7 +31,11 @@ from r1_perception.mapper import SCAN_OFFSETS, yaw_of  # noqa: E402
 from r1_perception.robot_model import DEFAULT_MJCF  # noqa: E402
 
 SCENE = DEFAULT_MJCF.parent / "scene_arena.xml"
-PALLET_CENTRE, PALLET_HALF, PALLET_TOP = np.array([0.0, 1.6]), np.array([0.6, 0.4]), 0.144
+# What the climb tests walk over: the EUR pallet (euro_pallet.xml) or, with R1_CLIMB_TARGET=block, the
+# solid block of the same outline next to it (solid_block.xml). The names keep "PALLET" for both.
+TARGETS = {"pallet": np.array([0.0, 1.6]), "block": np.array([1.5, 1.6])}
+TARGET = os.environ.get("R1_CLIMB_TARGET", "pallet")
+PALLET_CENTRE, PALLET_HALF, PALLET_TOP = TARGETS[TARGET], np.array([0.6, 0.4]), 0.144
 EDGE_Y = PALLET_CENTRE[1] - PALLET_HALF[1]
 
 
@@ -46,7 +51,9 @@ class Truth:
     def ground(self, xy) -> float:
         if np.all(np.abs(xy - PALLET_CENTRE) <= PALLET_HALF):
             return PALLET_TOP
-        start, geom = np.array([xy[0], xy[1], 2.5]), np.zeros(1, np.int32)
+        # From 1.5 m, not higher: the KUKA's arm overhangs the block's starts at about 2.4 m, which
+        # a ray from above took for the ground (and the robot for fallen).
+        start, geom = np.array([xy[0], xy[1], 1.5]), np.zeros(1, np.int32)
         while True:
             dist = mujoco.mj_ray(self.m, self.d, start, np.array([0, 0, -1.0]), self.groups, 1, -1, geom)
             if dist < 0:

@@ -1,0 +1,12 @@
+v2: 20 attempts: success 2, fall 6, stuck 9, missed 3
+  success rate 2/20 = 10 %
+  peak_rise      median   0.04 m, min   0.00, max   0.15
+  max_tilt_deg   median  11.20 deg, min   3.30, max  86.60
+  walk_s         median   9.20 s, min   4.60, max  16.60
+  drift          median    1.2 deg, max    5.2 (path minus commanded angle)
+v3: 20 attempts: success 3, fall 4, stuck 13
+  success rate 3/20 = 15 %
+  peak_rise      median   0.00 m, min   0.00, max   0.15
+  max_tilt_deg   median   3.80 deg, min   3.30, max  62.00
+  walk_s         median   9.35 s, min   5.70, max  13.60
+  drift          median    4.6 deg, max    5.3 (path minus commanded angle)

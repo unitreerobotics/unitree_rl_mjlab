@@ -29,7 +29,7 @@ head_camera: 1
 head_camera_model: "head_camera.json"
 head_camera_fps: 30  # target; the laptop reaches about 27 in stereo. The real camera's rate is not known yet: match it for sim = real
 head_camera_url: "rtsp://127.0.0.1:8554/robot"
-ffmpeg: "/home/mayyar/tools/ffmpeg/ffmpeg"
+ffmpeg: "/home/tefai/tools/ffmpeg/ffmpeg"  # needs ffmpeg >= 5.1 (-fps_mode); was /home/mayyar/tools/ffmpeg/ffmpeg
 
 # Depth image of the head's camera module (R1 EDU spec: 544 x 448 at 10 Hz), rendered with the head
 # camera (needs head_camera: 1) from the MJCF camera "depth_camera" and written to /dev/shm for the

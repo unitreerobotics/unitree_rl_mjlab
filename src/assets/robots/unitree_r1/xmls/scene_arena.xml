@@ -5,6 +5,7 @@
   <include file="scene_kuka.xml" />
   <include file="arena.xml" />
   <include file="euro_pallet.xml" />
+  <include file="solid_block.xml" />
   <!-- far clip is zfar * statistic extent (0.8, from scene_kuka.xml): 250 * 0.8 = 200 m covers the hall -->
   <visual>
     <map zfar="250" />

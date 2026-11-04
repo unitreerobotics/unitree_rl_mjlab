@@ -25,6 +25,7 @@ class ShmDepthSource:
         self._mm: mmap.mmap | None = None
         self._inode: int | None = None
         self._seq = 0
+        self.skipped = 0   # frames the simulator wrote that were overwritten before read() saw them
 
     def _open(self) -> bool:
         try:
@@ -57,6 +58,8 @@ class ShmDepthSource:
                 break
         else:
             return None
+        if self._seq and seq > self._seq + 2:
+            self.skipped += (seq - self._seq) // 2 - 1   # seqlock: +2 per frame
         self._seq = seq
         stamp = h[11]
         if time.time() - stamp > self.max_age_s:

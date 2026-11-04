@@ -6,6 +6,9 @@
 #   ./start_quest_sim.sh            # then in the Quest: http://localhost:8080, Enter VR
 #   ./start_quest_sim.sh --upper    # also head and right arm (rt/arm_sdk): right A takes over,
 #                                   # right grip moves the arm, right B hands back
+#   ./start_quest_sim.sh --perceptive  # Perceptive instead of Velocity: the highest
+#                                   # deploy/robots/r1/config/policy/perceptive/vN, with lowstate_shm and
+#                                   # heightmap_node.py; the robot walks only while the height map is fresh
 #   ./start_quest_sim.sh --stereo   # two eyes (6.3 cm apart, assumed), one above the other: depth in the Quest
 #                                   # (both options together work too)
 #   Ctrl+C                          # stops everything, stream.py first
@@ -17,11 +20,13 @@ set -u
 
 UPPER=0
 STEREO=0
+PERCEPTIVE=0
 for arg in "$@"; do
     case "$arg" in
         --upper) UPPER=1 ;;
         --stereo) STEREO=1 ;;
-        *) echo "unknown option $arg; usage: $0 [--upper] [--stereo]"; exit 2 ;;
+        --perceptive) PERCEPTIVE=1 ;;
+        *) echo "unknown option $arg; usage: $0 [--upper] [--stereo] [--perceptive]"; exit 2 ;;
     esac
 done
 
@@ -31,12 +36,19 @@ ARENA="${ARENA:-$(dirname "$MJLAB")/arena-r1-kit}"
 MEDIAMTX="${MEDIAMTX:-$HOME/tools/mediamtx/mediamtx}"
 FFMPEG_DIR="${FFMPEG_DIR:-$HOME/tools/ffmpeg}"
 LOGS="$MJLAB/logs/quest_sim/$(date +%Y-%m-%d_%H-%M-%S)"
+# CPU priority (nice; higher = yields more): the video for the Quest yields to the robot's own chain.
+# Without root nice can only go up, so the controller, simulator, lowstate_shm and heightmap_node
+# stay at 0 and the rest is lowered: stream.py (decoding and WebRTC) and mediamtx. Not the
+# simulator's ffmpeg: the head camera thread that renders the depth image waits for it, so a
+# starved ffmpeg would delay the height map. NICE_VIDEO=0 turns this off.
+NICE_VIDEO="${NICE_VIDEO:-10}"
 
 # Each part runs in its own session (setsid): Ctrl+C in the terminal reaches only this script,
 # which then stops them in order.
 PIDS=()          # started processes, in start order
 STREAM_PID=""
 TAIL_PID=""
+SYSMON_PID=""
 
 say()  { printf '\033[1m[start]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[start] %s\033[0m\n' "$*"; STATUS=1; exit 1; }
@@ -67,6 +79,7 @@ stop_all() {
         kill -0 "$STREAM_PID" 2>/dev/null && { say "stream.py did not stop in 30 s; ending it"; kill -9 "$STREAM_PID"; }
     fi
     [[ -n "$TAIL_PID" ]] && kill "$TAIL_PID" 2>/dev/null
+    [[ -n "$SYSMON_PID" ]] && kill "$SYSMON_PID" 2>/dev/null
     for ((i = ${#PIDS[@]} - 1; i >= 0; i--)); do
         kill "${PIDS[i]}" 2>/dev/null
     done
@@ -84,6 +97,12 @@ stop_all() {
 for name in r1_ctrl unitree_mujoco mediamtx; do
     pgrep -x "$name" > /dev/null && fail "$name is already running; stop it first (pkill -x $name)"
 done
+if ((PERCEPTIVE)); then
+    [[ -x "$MJLAB/perception/cpp/build/lowstate_shm" ]] || fail "lowstate_shm not built (perception/cpp)"
+    [[ -x "$MJLAB/perception/.venv/bin/python" ]] || fail "perception venv missing: $MJLAB/perception/.venv"
+    pgrep -x lowstate_shm > /dev/null && fail "lowstate_shm is already running; stop it first (pkill -x lowstate_shm)"
+    pgrep -f heightmap_node.py > /dev/null && fail "heightmap_node.py is already running; stop it first"
+fi
 for port in 8080 8554 8889; do
     ss -ltnH "sport = :$port" | grep -q . && fail "port $port is in use (an earlier stream.py or mediamtx?); stop it first"
 done
@@ -91,15 +110,27 @@ done
 mkdir -p "$LOGS"
 trap stop_all INT TERM EXIT
 
+# CPU clock, throttling, temperatures, GPU and the busiest processes once a second (sysmon.sh),
+# to tell why the simulation sometimes slows down; lowest priority so it disturbs nothing.
+(exec setsid nice -n 19 "$MJLAB/sysmon.sh") > "$LOGS/system.log" 2>&1 &
+SYSMON_PID=$!
+
 # ---- 1. video relay -------------------------------------------------------------------------
 say "1/5 mediamtx (video relay)"
-(cd "$MJLAB/simulate" && exec setsid "$MEDIAMTX" mediamtx_sim.yml) > "$LOGS/mediamtx.log" 2>&1 &
+(cd "$MJLAB/simulate" && exec setsid nice -n "$NICE_VIDEO" "$MEDIAMTX" mediamtx_sim.yml) > "$LOGS/mediamtx.log" 2>&1 &
 PIDS+=($!)
 wait_for "$LOGS/mediamtx.log" "WebRTC\] started" 10 $! "mediamtx"
 
 # ---- 2. controller (before the simulator, so the policy holds the robot from the first step) --
-say "2/5 controller: velocity from the Quest"
-(cd "$MJLAB/deploy/robots/r1/build" && exec setsid ./r1_ctrl --network lo --cmd-source sport --arm-sdk --start-velocity) \
+if ((PERCEPTIVE)); then
+    START_STATE=Perceptive
+    POLICY=$(ls -d "$MJLAB/deploy/robots/r1/config/policy/perceptive"/*/ 2>/dev/null | sort | tail -1)
+    say "2/5 controller: Perceptive (policy $(basename "$POLICY")), velocity from the Quest"
+else
+    START_STATE=Velocity
+    say "2/5 controller: velocity from the Quest"
+fi
+(cd "$MJLAB/deploy/robots/r1/build" && exec setsid ./r1_ctrl --network lo --cmd-source sport --arm-sdk --start-state $START_STATE) \
     > "$LOGS/controller.log" 2>&1 &
 PIDS+=($!)
 CTRL_PID=$!
@@ -113,6 +144,18 @@ SIM_PID=$!
 wait_for "$LOGS/controller.log" "walking service" 30 $CTRL_PID "controller"
 wait_for "$LOGS/simulator.log" "head camera\] publishing" 30 $SIM_PID "simulator camera"
 
+# ---- 3b. perception (Perceptive only): odometry and height map for the policy ----------------
+if ((PERCEPTIVE)); then
+    say "3b  lowstate_shm and heightmap_node.py"
+    (cd "$MJLAB/perception" && exec setsid cpp/build/lowstate_shm --iface lo) > "$LOGS/lowstate_shm.log" 2>&1 &
+    PIDS+=($!)
+    wait_for "$LOGS/lowstate_shm.log" "r1_lowstate" 10 $! "lowstate_shm"
+    (cd "$MJLAB/perception" && exec setsid .venv/bin/python -u heightmap_node.py --iface lo \
+        --timing-log "$LOGS/heightmap_timing.csv") > "$LOGS/heightmap.log" 2>&1 &
+    PIDS+=($!)
+    wait_for "$LOGS/heightmap.log" "\[heightmap\]" 20 $! "heightmap_node.py"
+fi
+
 # ---- 4. arena-r1-kit ------------------------------------------------------------------------
 STREAM_ARGS=(--http --webrtc --walk --iface lo --source rtsp://127.0.0.1:8554/robot)
 ((STEREO)) && STREAM_ARGS+=(--stereo)
@@ -124,7 +167,7 @@ if ((UPPER)); then
 else
     say "4/5 stream.py"
 fi
-(cd "$ARENA" && PATH="$FFMPEG_DIR:$PATH" exec setsid .venv/bin/python -u stream.py "${STREAM_ARGS[@]}" \
+(cd "$ARENA" && PATH="$FFMPEG_DIR:$PATH" exec setsid nice -n "$NICE_VIDEO" .venv/bin/python -u stream.py "${STREAM_ARGS[@]}" \
     <<< "follow") > "$LOGS/stream.log" 2>&1 &
 STREAM_PID=$!
 wait_for "$LOGS/stream.log" "serving on port" 30 $STREAM_PID "stream.py"

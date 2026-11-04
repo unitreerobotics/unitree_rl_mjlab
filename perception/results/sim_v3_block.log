@@ -1,0 +1,23 @@
+[runs] 1/20 perceptive: distance +1.64, offset -0.14, angle -13.77, speed +0.30
+[runs]   -> missed, 50 s
+[runs] 2/20 perceptive: distance +1.81, offset +0.25, angle +3.20, speed +0.52
+[runs]   -> success, 49 s
+[runs] 3/20 perceptive: distance +1.54, offset +0.26, angle +9.48, speed +0.30
+[runs]   -> fall, 49 s
+[runs] 4/20 perceptive: distance +1.86, offset -0.28, angle +6.89, speed +0.35
+[runs]   -> stuck, 56 s
+[runs] 5/20 perceptive: distance +1.86, offset +0.02, angle -6.01, speed +0.43
+[runs]   -> error (simulator not ready after 30 s (no 'head camera] publishing' in its log)), 31 s
+[runs] 6/20 perceptive: distance +1.03, offset -0.23, angle +5.12, speed +0.49
+[runs]   -> missed, 44 s
+[runs] 7/20 perceptive: distance +1.62, offset -0.07, angle +14.92, speed +0.59
+[runs]   -> missed, 44 s
+[runs] 8/20 perceptive: distance +1.69, offset +0.09, angle +5.65, speed +0.42
+[runs]   -> success, 54 s
+[runs] 9/20 perceptive: distance +1.14, offset +0.13, angle +0.76, speed +0.39
+[runs]   -> error (simulator not ready after 30 s (no 'head camera] publishing' in its log)), 32 s
+[runs] 10/20 perceptive: distance +1.49, offset +0.23, angle +13.02, speed +0.41
+[runs]   -> error (simulator not ready after 30 s (no 'head camera] publishing' in its log)), 31 s
+[runs] 11/20 perceptive: distance +1.57, offset -0.11, angle +2.83, speed +0.40
+[runs]   -> missed, 56 s
+[runs] 12/20 perceptive: distance +1.39, offset +0.23, angle -8.19, speed +0.49
