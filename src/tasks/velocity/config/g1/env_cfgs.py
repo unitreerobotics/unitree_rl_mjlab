@@ -12,7 +12,10 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
-from src.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
+from src.tasks.velocity.velocity_env_cfg import (
+  configure_foot_height_sensor,
+  make_velocity_env_cfg,
+)
 
 
 def unitree_g1_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -21,7 +24,8 @@ def unitree_g1_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cfg.sim.mujoco.ccd_iterations = 500
   cfg.sim.contact_sensor_maxmatch = 500
-  cfg.sim.nconmax = 48
+  # Let MuJoCo-Warp 3.11 size the contact buffer from the compiled model.
+  cfg.sim.nconmax = None
 
   cfg.scene.entities = {"robot": get_g1_robot_cfg()}
 
@@ -32,6 +36,7 @@ def unitree_g1_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       sensor.frame.name = "pelvis"
 
   site_names = ("left_foot", "right_foot")
+  configure_foot_height_sensor(cfg, site_names)
   geom_names = tuple(
     f"{side}_foot{i}_collision" for side in ("left", "right") for i in range(1, 8)
   )
@@ -181,10 +186,11 @@ def unitree_g1_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # Remove raycast sensor and height scan (no terrain to scan).
   cfg.scene.sensors = tuple(
-    s for s in (cfg.scene.sensors or ()) if s.name != "terrain_scan"
+    s for s in (cfg.scene.sensors or ()) if s.name not in ("terrain_scan", "foot_height_scan")
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]
+  cfg.rewards["foot_clearance"].params.pop("height_sensor_name", None)
 
   # Disable terrain curriculum (not present in play mode since rough clears all).
   cfg.curriculum.pop("terrain_levels", None)

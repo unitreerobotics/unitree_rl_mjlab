@@ -121,7 +121,7 @@ State_Mimic::State_Mimic(int state_mode, std::string state_string)
     const auto & joy = FSMState::lowstate->joystick;
     this->registered_checks.emplace_back(
         std::make_pair(
-            [&]()->bool{ return (env->episode_length * env->step_dt) > time_range_[1]; }, // time out
+            [&]()->bool{ return (env->episode_length.load() * env->step_dt + time_range_[0]) >= time_range_[1]; }, // time out
             FSMStringMap.right.at(end_state)
         )
     );
@@ -138,10 +138,12 @@ void State_Mimic::enter()
     // set gain
     for (int i = 0; i < env->robot->data.joint_stiffness.size(); i++)
     {
-        lowcmd->msg_.motor_cmd()[i].kp() = env->robot->data.joint_stiffness[i];
-        lowcmd->msg_.motor_cmd()[i].kd() = env->robot->data.joint_damping[i];
-        lowcmd->msg_.motor_cmd()[i].dq() = 0;
-        lowcmd->msg_.motor_cmd()[i].tau() = 0;
+        const auto motor_id = env->robot->data.joint_ids_map[i];
+        auto & motor_cmd = lowcmd->msg_.motor_cmd()[motor_id];
+        motor_cmd.kp() = env->robot->data.joint_stiffness[i];
+        motor_cmd.kd() = env->robot->data.joint_damping[i];
+        motor_cmd.dq() = 0;
+        motor_cmd.tau() = 0;
     }
 
     motion = motion_; // set for specific motion
@@ -166,7 +168,7 @@ void State_Mimic::enter()
         while (policy_thread_running)
         {
             env->robot->update();
-            motion->update(env->episode_length * env->step_dt + time_range_[0]);
+            motion->update(env->episode_length.load() * env->step_dt + time_range_[0]);
             env->step();
 
             // Sleep

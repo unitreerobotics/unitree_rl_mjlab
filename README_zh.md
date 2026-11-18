@@ -23,6 +23,10 @@ Mjlab 结合了 [Isaac Lab](https://github.com/isaac-sim/IsaacLab) 的成熟高�
 
 安装和配置步骤请参考 [setup.md](doc/setup_zh.md)
 
+当前版本使用 **mjlab v1.6.0**，对应 MuJoCo / MuJoCo-Warp 3.11 和 RSL-RL 5.4.2。
+从旧环境升级时，在项目根目录执行 `python -m pip install --upgrade -e .`。
+Python 支持 3.10–3.13，推荐使用 3.11。
+
 
 ## 🔁 流程概览
 
@@ -49,7 +53,7 @@ python scripts/train.py Unitree-G1-Flat --env.scene.num-envs=4096
 
 ```bash
 python scripts/train.py Unitree-G1-Flat \
-  --gpu-ids 0 1 \
+  --gpu-ids '[0, 1]' \
   --env.scene.num-envs=4096
 ```
 
@@ -64,6 +68,9 @@ python scripts/train.py Unitree-G1-Flat \
 > [!NOTE]
 > 更多有关详细说明，请参阅 mjlab 文档
 > [mjlab documentation](https://mujocolab.github.io/mjlab/index.html).
+
+> mjlab v1.6 的 CLI 使用 Python 集合语法：列表写作 `'[0, 1]'`，元组写作 `'(512, 256, 128)'`。
+> 训练、回放和动作转换命令中的其他标量参数保持原用法。兼容性验证命令见 [tests/README.md](tests/README.md)。
 
 ### 2. 动作模仿训练
 

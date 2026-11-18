@@ -1,5 +1,6 @@
 """Unitree A2 constants."""
 
+from copy import deepcopy
 from pathlib import Path
 
 import mujoco
@@ -8,7 +9,6 @@ from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.actuator import ElectricActuator, reflected_inertia
-from mjlab.utils.os import update_assets
 from mjlab.utils.spec_config import CollisionCfg
 
 ##
@@ -21,16 +21,8 @@ A2_XML: Path = (
 assert A2_XML.exists()
 
 
-def get_assets(meshdir: str) -> dict[str, bytes]:
-  assets: dict[str, bytes] = {}
-  update_assets(assets, A2_XML.parent / "assets", meshdir)
-  return assets
-
-
 def get_spec() -> mujoco.MjSpec:
-  spec = mujoco.MjSpec.from_file(str(A2_XML))
-  spec.assets = get_assets(spec.meshdir)
-  return spec
+  return mujoco.MjSpec.from_file(str(A2_XML))
 
 
 ##
@@ -104,7 +96,7 @@ FEET_ONLY_COLLISION = CollisionCfg(
 FULL_COLLISION = CollisionCfg(
   geom_names_expr=(".*_collision",),
   condim={_foot_regex: 3, ".*_collision": 1},
-  priority={_foot_regex: 1},
+  priority={_foot_regex: 1, ".*": 0},
   friction={_foot_regex: (0.6,)},
   solimp={_foot_regex: (0.9, 0.95, 0.023)},
   contype=1,
@@ -132,10 +124,10 @@ def get_a2_robot_cfg() -> EntityCfg:
   the config is shared across multiple places.
   """
   return EntityCfg(
-    init_state=INIT_STATE,
-    collisions=(FULL_COLLISION,),
+    init_state=deepcopy(INIT_STATE),
+    collisions=(deepcopy(FULL_COLLISION),),
     spec_fn=get_spec,
-    articulation=A2_ARTICULATION,
+    articulation=deepcopy(A2_ARTICULATION),
   )
 
 if __name__ == "__main__":

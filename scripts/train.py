@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 import tyro
 
@@ -39,20 +39,21 @@ class TrainConfig:
     return TrainConfig(env=env_cfg, agent=agent_cfg)
 
 
-def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
+def run_train(
+  task_id: str, cfg: TrainConfig, log_dir: Path, resume_path: Path | None = None
+) -> None:
+  if cfg.video and (cfg.video_interval <= 0 or cfg.video_length <= 0):
+    raise ValueError("Video interval and length must be positive.")
+  rank = int(os.environ.get("RANK", "0"))
+  seed = cfg.agent.seed + rank
   cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
   if cuda_visible == "":
     device = "cpu"
-    seed = cfg.agent.seed
-    rank = 0
   else:
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    rank = int(os.environ.get("RANK", "0"))
     # Set EGL device to match the CUDA device.
     os.environ["MUJOCO_EGL_DEVICE_ID"] = str(local_rank)
     device = f"cuda:{local_rank}"
-    # Set seed to have diversity in different processes.
-    seed = cfg.agent.seed + local_rank
 
   configure_torch_backends()
 
@@ -67,19 +68,18 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
   )
 
   if is_tracking_task:
-    if not cfg.motion_file:
-      raise ValueError("For tracking tasks, --motion-file must be set ...")
-    motion_path = Path(cfg.motion_file).expanduser().resolve()
-    if not motion_path.exists():
-      raise FileNotFoundError(f"Motion file not found: {motion_path}")
     motion_cmd = cfg.env.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)
+    motion_file = (
+      cfg.motion_file if cfg.motion_file is not None else motion_cmd.motion_file
+    )
+    if not motion_file:
+      raise ValueError("For tracking tasks, --motion-file must be set ...")
+    motion_path = Path(motion_file).expanduser().resolve()
+    if not motion_path.is_file():
+      raise FileNotFoundError(f"Motion file not found: {motion_path}")
     motion_cmd.motion_file = str(motion_path)
-    print(f"[INFO] Using motion file: {motion_cmd.motion_file}")
-
-    # Check if motion_file is already set (e.g., via CLI --env.commands.motion.motion-file).
-    if motion_cmd.motion_file and Path(motion_cmd.motion_file).exists():
-      print(f"[INFO] Using local motion file: {motion_cmd.motion_file}")
+    print(f"[INFO] Using local motion file: {motion_cmd.motion_file}")
 
   # Enable NaN guard if requested.
   if cfg.enable_nan_guard:
@@ -89,65 +89,68 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
   if rank == 0:
     print(f"[INFO] Logging experiment in directory: {log_dir}")
 
-  env = ManagerBasedRlEnv(
-    cfg=cfg.env, device=device, render_mode="rgb_array" if cfg.video else None
-  )
-
-  log_root_path = log_dir.parent  # Go up from specific run dir to experiment dir.
-
-  resume_path: Path | None = None
-  if cfg.agent.resume:
-      # Load checkpoint from local filesystem.
-      resume_path = get_checkpoint_path(
-        log_root_path, cfg.agent.load_run, cfg.agent.load_checkpoint
-      )
-
-  # Only record videos on rank 0 to avoid multiple workers writing to the same files.
-  if cfg.video and rank == 0:
-    env = VideoRecorder(
-      env,
-      video_folder=Path(log_dir) / "videos" / "train",
-      step_trigger=lambda step: step % cfg.video_interval == 0,
-      video_length=cfg.video_length,
-      disable_logger=True,
+  # Resolve before constructing anything that may create the new run directory.
+  if cfg.agent.resume and resume_path is None:
+    resume_path = get_checkpoint_path(
+      log_dir.parent, cfg.agent.load_run, cfg.agent.load_checkpoint
     )
-    print("[INFO] Recording videos during training.")
 
-  env = RslRlVecEnvWrapper(env, clip_actions=cfg.agent.clip_actions)
-
-  agent_cfg = asdict(cfg.agent)
-  env_cfg = asdict(cfg.env)
-
-  runner_cls = load_runner_cls(task_id)
-  if runner_cls is None:
-    runner_cls = MjlabOnPolicyRunner
-
-  runner_kwargs = {}
-  runner = runner_cls(env, agent_cfg, str(log_dir), device, **runner_kwargs)
-
-  runner.add_git_repo_to_log(__file__)
-  if resume_path is not None:
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-    runner.load(str(resume_path))
-
-  # Only write config files from rank 0 to avoid race conditions.
-  if rank == 0:
-    dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
-    dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
-
-  runner.learn(
-    num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
+  env = ManagerBasedRlEnv(
+    cfg=cfg.env, device=device,
+    render_mode="rgb_array" if cfg.video and rank == 0 else None,
   )
 
-  env.close()
+  try:
+    # Only record videos on rank 0 to avoid multiple workers writing to the same files.
+    if cfg.video and rank == 0:
+      env = VideoRecorder(
+        env,
+        video_folder=Path(log_dir) / "videos" / "train",
+        step_trigger=lambda step: step % cfg.video_interval == 0,
+        video_length=cfg.video_length,
+        disable_logger=True,
+      )
+      print("[INFO] Recording videos during training.")
+
+    env = RslRlVecEnvWrapper(env, clip_actions=cfg.agent.clip_actions)
+
+    agent_cfg = asdict(cfg.agent)
+    env_cfg = asdict(cfg.env)
+
+    runner_cls = load_runner_cls(task_id)
+    if runner_cls is None:
+      runner_cls = MjlabOnPolicyRunner
+
+    # RSL-RL 5 mutates agent_cfg during runner construction. Serialize it first.
+    if rank == 0:
+      dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
+      dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
+
+    runner = runner_cls(env, agent_cfg, str(log_dir), device)
+
+    runner.add_git_repo_to_log(__file__)
+    if resume_path is not None:
+      print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+      runner.load(str(resume_path))
+
+    runner.learn(
+      num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
+    )
+  finally:
+    env.close()
 
 
 def launch_training(task_id: str, args: TrainConfig | None = None):
   args = args or TrainConfig.from_task(task_id)
 
   # Create log directory once before launching workers.
-  log_root_path = Path("logs") / "rsl_rl" / args.agent.experiment_name
-  log_root_path.resolve()
+  log_root_path = (Path("logs") / "rsl_rl" / args.agent.experiment_name).resolve()
+  # torchrunx creates its log directory before workers start. Resolve here so
+  # load_run='.*' cannot select that new, empty directory as the latest run.
+  resume_path = (
+    get_checkpoint_path(log_root_path, args.agent.load_run, args.agent.load_checkpoint)
+    if args.agent.resume else None
+  )
   log_dir_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
   if args.agent.run_name:
     log_dir_name += f"_{args.agent.run_name}"
@@ -161,11 +164,11 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
   else:
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, selected_gpus))
-  os.environ["MUJOCO_GL"] = "egl"
+  os.environ.setdefault("MUJOCO_GL", "egl")
 
   if num_gpus <= 1:
     # CPU or single GPU: run directly without torchrunx.
-    run_train(task_id, args, log_dir)
+    run_train(task_id, args, log_dir, resume_path)
   else:
     # Multi-GPU: use torchrunx.
     import torchrunx
@@ -189,7 +192,7 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
       workers_per_host=num_gpus,
       backend=None,  # Let rsl_rl handle process group initialization.
       copy_env_vars=torchrunx.DEFAULT_ENV_VARS_FOR_COPY + ("MUJOCO*",),
-    ).run(run_train, task_id, args, log_dir)
+    ).run(run_train, task_id, args, log_dir, resume_path)
 
 
 def main():

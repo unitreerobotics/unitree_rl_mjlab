@@ -16,7 +16,14 @@ from typing import Any, List, TypedDict
 
 import mujoco
 import numpy as np
+import trimesh
 import viser
+from mjviser.conversions import (
+  create_primitive_mesh,
+  merge_geoms,
+  mujoco_mesh_to_trimesh,
+)
+from mujoco import mjtGeom
 
 from mjlab.asset_zoo.robots import (
   get_g1_robot_cfg,
@@ -27,10 +34,6 @@ from mjlab.terrains.config import ALL_TERRAINS_CFG
 from mjlab.terrains.terrain_generator import (
   TerrainGenerator,
   TerrainGeneratorCfg,
-)
-from mjlab.viewer.viser.conversions import (
-  merge_geoms,
-  merge_geoms_global,
 )
 
 # Supported robots for visualization.
@@ -86,6 +89,24 @@ class _AppState(TypedDict):
   difficulty_range: tuple[float, float]
   robot_handles: list[Any]
   terrain_origins: np.ndarray | None
+
+
+def merge_geoms_global(
+  model: mujoco.MjModel, data: mujoco.MjData, geom_ids: list[int]
+) -> trimesh.Trimesh:
+  """Merge mjviser meshes after applying the current world transforms."""
+  meshes = []
+  for geom_id in geom_ids:
+    if model.geom_type[geom_id] == mjtGeom.mjGEOM_MESH:
+      mesh = mujoco_mesh_to_trimesh(model, geom_id)
+    else:
+      mesh = create_primitive_mesh(model, geom_id)
+    transform = np.eye(4)
+    transform[:3, :3] = data.geom_xmat[geom_id].reshape(3, 3)
+    transform[:3, 3] = data.geom_xpos[geom_id]
+    mesh.apply_transform(transform)
+    meshes.append(mesh)
+  return trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
 
 
 def main():

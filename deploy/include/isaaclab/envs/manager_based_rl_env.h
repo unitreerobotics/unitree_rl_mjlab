@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <eigen3/Eigen/Dense>
 #include <yaml-cpp/yaml.h>
 #include "isaaclab/manager/observation_manager.h"
@@ -73,7 +74,7 @@ public:
     std::unique_ptr<ActionManager> action_manager;
     std::shared_ptr<Articulation> robot;
     std::unique_ptr<Algorithms> alg;
-    long episode_length = 0;
+    std::atomic<long> episode_length{0};
     float global_phase = 0.0f;
 };
 

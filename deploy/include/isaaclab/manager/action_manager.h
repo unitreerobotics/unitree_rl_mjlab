@@ -6,6 +6,7 @@
 #include "isaaclab/envs/manager_based_rl_env.h"
 #include "isaaclab/manager/manager_term_cfg.h"
 #include <numeric>
+#include <mutex>
 
 namespace isaaclab
 {
@@ -52,6 +53,7 @@ public:
 
     void reset()
     {
+        std::lock_guard<std::mutex> lock(action_mutex_);
         _action.assign(total_action_dim(), 0.0f);
         for(auto & term : _terms)
         {
@@ -61,11 +63,13 @@ public:
 
     std::vector<float> action()
     {
+        std::lock_guard<std::mutex> lock(action_mutex_);
         return _action;
     }
 
     std::vector<float> processed_actions()
     {
+        std::lock_guard<std::mutex> lock(action_mutex_);
         std::vector<float> actions;
         for(auto & term : _terms)
         {
@@ -77,6 +81,7 @@ public:
 
     void process_action(std::vector<float> action)
     {
+        std::lock_guard<std::mutex> lock(action_mutex_);
         _action = action;
         int idx = 0;
         for(auto & term : _terms)
@@ -125,6 +130,8 @@ private:
 
     std::vector<float> _action;
     std::vector<std::unique_ptr<ActionTerm>> _terms;
+    // Publish/read a complete action, including all terms, as one snapshot.
+    std::mutex action_mutex_;
 };
 
 };

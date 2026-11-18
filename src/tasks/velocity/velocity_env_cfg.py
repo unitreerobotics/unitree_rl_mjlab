@@ -21,7 +21,9 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
-from mjlab.sensor import GridPatternCfg, ObjRef, RayCastSensorCfg
+from mjlab.sensor import (
+  GridPatternCfg, ObjRef, RayCastSensorCfg, RingPatternCfg, TerrainHeightSensorCfg,
+)
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
@@ -31,6 +33,26 @@ from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 
 import src.tasks.velocity.mdp as mdp
+
+
+def configure_foot_height_sensor(
+  cfg: ManagerBasedRlEnvCfg, site_names: tuple[str, ...]
+) -> None:
+  """Measure clearance above local terrain, rather than above world z=0."""
+  cfg.scene.sensors = (cfg.scene.sensors or ()) + (
+    TerrainHeightSensorCfg(
+      name="foot_height_scan",
+      frame=tuple(ObjRef(type="site", name=name, entity="robot") for name in site_names),
+      pattern=RingPatternCfg.single_ring(radius=0.03, num_samples=6),
+      ray_alignment="yaw",
+      max_distance=1.0,
+      exclude_parent_body=True,
+      include_geom_groups=(0,),
+    ),
+  )
+  cfg.rewards["foot_clearance"].params["height_sensor_name"] = "foot_height_scan"
+  # Raycast frames follow site_names; keep reward velocities in the same order.
+  cfg.rewards["foot_clearance"].params["asset_cfg"].preserve_order = True
 
 
 def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:

@@ -1,5 +1,6 @@
 """Unitree H2 constants."""
 
+from copy import deepcopy
 from pathlib import Path
 
 import mujoco
@@ -7,7 +8,6 @@ import mujoco
 from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-from mjlab.utils.os import update_assets
 from mjlab.utils.spec_config import CollisionCfg
 
 ##
@@ -20,16 +20,8 @@ H2_XML: Path = (
 assert H2_XML.exists()
 
 
-def get_assets(meshdir: str) -> dict[str, bytes]:
-  assets: dict[str, bytes] = {}
-  update_assets(assets, H2_XML.parent / "assets", meshdir)
-  return assets
-
-
 def get_spec() -> mujoco.MjSpec:
-  spec = mujoco.MjSpec.from_file(str(H2_XML))
-  spec.assets = get_assets(spec.meshdir)
-  return spec
+  return mujoco.MjSpec.from_file(str(H2_XML))
 
 
 ##
@@ -128,8 +120,10 @@ HOME_KEYFRAME = EntityCfg.InitialStateCfg(
 # are given condim=3.
 FULL_COLLISION = CollisionCfg(
   geom_names_expr=(".*_collision",),
+  contype=1,
+  conaffinity=1,
   condim={r"^(left|right)_foot[1-7]_collision$": 3, ".*_collision": 1},
-  priority={r"^(left|right)_foot[1-7]_collision$": 1},
+  priority={r"^(left|right)_foot[1-7]_collision$": 1, ".*": 0},
   friction={r"^(left|right)_foot[1-7]_collision$": (0.6,)},
 )
 
@@ -138,7 +132,7 @@ FULL_COLLISION_WITHOUT_SELF = CollisionCfg(
   contype=0,
   conaffinity=1,
   condim={r"^(left|right)_foot[1-7]_collision$": 3, ".*_collision": 1},
-  priority={r"^(left|right)_foot[1-7]_collision$": 1},
+  priority={r"^(left|right)_foot[1-7]_collision$": 1, ".*": 0},
   friction={r"^(left|right)_foot[1-7]_collision$": (0.6,)},
 )
 
@@ -177,10 +171,10 @@ def get_h2_robot_cfg() -> EntityCfg:
   the config is shared across multiple places.
   """
   return EntityCfg(
-    init_state=HOME_KEYFRAME,
-    collisions=(FULL_COLLISION,),
+    init_state=deepcopy(HOME_KEYFRAME),
+    collisions=(deepcopy(FULL_COLLISION),),
     spec_fn=get_spec,
-    articulation=H2_ARTICULATION,
+    articulation=deepcopy(H2_ARTICULATION),
   )
 
 

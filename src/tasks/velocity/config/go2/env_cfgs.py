@@ -14,7 +14,10 @@ from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
-from src.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
+from src.tasks.velocity.velocity_env_cfg import (
+  configure_foot_height_sensor,
+  make_velocity_env_cfg,
+)
 
 TerrainType = Literal["rough", "obstacles"]
 
@@ -38,6 +41,7 @@ def unitree_go2_rough_env_cfg(
 
   foot_names = ("FR", "FL", "RR", "RL")
   site_names = ("FR", "FL", "RR", "RL")
+  configure_foot_height_sensor(cfg, site_names)
   geom_names = tuple(f"{name}_foot_collision" for name in foot_names)
 
   feet_ground_cfg = ContactSensorCfg(
@@ -152,10 +156,11 @@ def unitree_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # Remove raycast sensor and height scan (no terrain to scan).
   cfg.scene.sensors = tuple(
-    s for s in (cfg.scene.sensors or ()) if s.name != "terrain_scan"
+    s for s in (cfg.scene.sensors or ()) if s.name not in ("terrain_scan", "foot_height_scan")
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]
+  cfg.rewards["foot_clearance"].params.pop("height_sensor_name", None)
 
   # Disable terrain curriculum (not present in play mode since rough clears all).
   cfg.curriculum.pop("terrain_levels", None)

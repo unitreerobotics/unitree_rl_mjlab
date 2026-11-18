@@ -62,13 +62,33 @@ git clone https://github.com/unitreerobotics/unitree_rl_mjlab.git
 sudo apt install -y libyaml-cpp-dev libboost-all-dev libeigen3-dev libspdlog-dev libfmt-dev
 ```
 
-我们将其余所需依赖放入 setup.py 文件中，
+`setup.py` 会自动读取固定版本清单 `requirements/runtime.txt`，
 进入 unitree_rl_mjlab 项目根目录并安装：
 
 ```bash
 cd unitree_rl_mjlab
 pip install -e .
 ```
+
+本项目固定使用 `mjlab==1.6.0`、`mujoco==3.11.0`、`mujoco-warp==3.11.0`、
+`rsl-rl-lib==5.4.2`、`torch==2.9.1` 和 `torchvision==0.24.1`。
+直接和间接运行依赖均使用 `==` 固定；Python 3.10–3.13 的差异通过环境标记选择对应的固定版本。
+推荐上面的 Python 3.11 环境。CPU/CUDA wheel 可以使用相同公开版本号的不同构建。
+上游发布新版不会使上述安装命令自动选择新版；固定版本不可用或依赖冲突时，安装会报错。
+请保留完整仓库或源码包中的 `requirements` 目录，不要单独复制 `setup.py`。
+已有旧版本环境可在项目根目录执行：
+
+```bash
+python -m pip install --upgrade -e .
+python -m pip check
+```
+
+升级后，多 GPU 参数使用 `--gpu-ids '[0, 1]'`；元组参数同样使用 Python 语法，例如
+`--agent.actor.hidden-dims '(512, 256, 128)'`。兼容性测试见 [tests/README.md](../tests/README.md)。
+
+G1 模仿任务现在使用仓库本地模型及其默认关节角；H2 速度任务使用 `H2_ACTION_SCALE`。
+这些修改会影响策略输入或动作含义，旧 checkpoint 应配合原训练配置验证；使用修正后的任务重新训练时，
+应同时更新部署策略及导出的动作缩放、默认关节角。
 
 ## 总结
 

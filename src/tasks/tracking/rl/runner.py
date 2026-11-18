@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import cast
 
 import torch
@@ -31,7 +32,7 @@ class _OnnxMotionModel(nn.Module):
 
   def forward(self, x, time_step):
     time_step_clamped = torch.clamp(
-      time_step.long().squeeze(-1), max=self.time_step_total - 1
+      time_step.long().squeeze(-1), min=0, max=self.time_step_total - 1
     )
     return (
       self.policy(x),
@@ -91,12 +92,15 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
 
   def save(self, path: str, infos=None):
     super().save(path, infos)
-    policy_path = path.split("model")[0]
-    filename = policy_path.split("/")[-2] + ".onnx"
+    policy_dir = Path(path).parent
+    policy_path = str(policy_dir)
+    filename = policy_dir.resolve().name + ".onnx"
     self.export_motion_policy_to_onnx(policy_path, filename)
     self.export_policy_to_onnx(policy_path, "policy.onnx")
     run_name: str = (
-      wandb.run.name if self.logger.logger_type == "wandb" and wandb.run else "local"
+      wandb.run.name
+      if self.logger.logger_type in ("wandb", "WandbLogWriter") and wandb.run
+      else "local"
     )  # type: ignore[assignment]
     metadata = get_base_metadata(self.env.unwrapped, run_name)
     motion_term = cast(
@@ -109,8 +113,11 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
       }
     )
     attach_metadata_to_onnx(os.path.join(policy_path, filename), metadata)
-    if self.logger.logger_type in ["wandb"]:
-      wandb.save(policy_path + filename, base_path=os.path.dirname(policy_path))
+    if (
+      self.logger.logger_type in ("wandb", "WandbLogWriter")
+      and self.cfg["upload_model"]
+    ):
+      wandb.save(os.path.join(policy_path, filename), base_path=policy_path)
       if self.registry_name is not None:
         wandb.run.use_artifact(self.registry_name)  # type: ignore
         self.registry_name = None

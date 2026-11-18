@@ -71,13 +71,13 @@ def body_orientation_l2(
   """
   asset: Entity = env.scene[asset_cfg.name]
 
-  # If body_ids are specified, compute projected gravity for that body.
-  if asset_cfg.body_ids:
+  if asset_cfg.body_names or asset_cfg.body_ids != slice(None):
     body_quat_w = asset.data.body_link_quat_w[:, asset_cfg.body_ids, :]  # [B, N, 4]
-    body_quat_w = body_quat_w.squeeze(1)  # [B, 4]
-    gravity_w = asset.data.gravity_vec_w  # [3]
-    projected_gravity_b = quat_apply_inverse(body_quat_w, gravity_w)  # [B, 3]
-    xy_squared = torch.sum(torch.square(projected_gravity_b[:, :2]), dim=1)
+    gravity_w = asset.data.gravity_vec_w[:, None, :].expand(
+      -1, body_quat_w.shape[1], -1
+    )
+    projected_gravity_b = quat_apply_inverse(body_quat_w, gravity_w)
+    xy_squared = projected_gravity_b[..., :2].square().sum(dim=-1).mean(dim=-1)
   else:
     # Use root link projected gravity.
     xy_squared = torch.sum(torch.square(asset.data.projected_gravity_b[:, :2]), dim=1)
@@ -103,7 +103,7 @@ def self_collision_cost(
     hit = (force_mag > force_threshold).any(dim=1)  # [B, H]
     return hit.sum(dim=-1).float()  # [B]
   assert data.found is not None
-  return data.found.squeeze(-1)
+  return data.found.sum(dim=-1).float()
 
 
 def body_angular_velocity_penalty(
@@ -112,10 +112,10 @@ def body_angular_velocity_penalty(
 ) -> torch.Tensor:
   """Penalize excessive body angular velocities."""
   asset: Entity = env.scene[asset_cfg.name]
-  ang_vel = asset.data.body_link_ang_vel_w[:, asset_cfg.body_ids, :]
-  ang_vel = ang_vel.squeeze(1)
-  ang_vel_xy = ang_vel[:, :2]  # Don't penalize z-angular velocity.
-  return torch.sum(torch.square(ang_vel_xy), dim=1)
+  if asset_cfg.body_names or asset_cfg.body_ids != slice(None):
+    ang_vel = asset.data.body_link_ang_vel_w[:, asset_cfg.body_ids, :]
+    return ang_vel[..., :2].square().sum(dim=-1).mean(dim=-1)
+  return asset.data.root_link_ang_vel_w[:, :2].square().sum(dim=-1)
 
 
 def angular_momentum_penalty(
@@ -166,10 +166,18 @@ def feet_clearance(
   command_name: str | None = None,
   command_threshold: float = 0.1,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+  height_sensor_name: str | None = None,
 ) -> torch.Tensor:
   """Penalize deviation from target clearance height, weighted by foot velocity."""
   asset: Entity = env.scene[asset_cfg.name]
-  foot_z = asset.data.site_pos_w[:, asset_cfg.site_ids, 2]  # [B, N]
+  if height_sensor_name is not None:
+    foot_z = env.scene[height_sensor_name].data.heights  # [B, N]
+  else:
+    # Plane fallback; keep the cost invariant to the environment's world origin.
+    foot_z = (
+      asset.data.site_pos_w[:, asset_cfg.site_ids, 2]
+      - env.scene.env_origins[:, 2:3]
+    )
   foot_vel_xy = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2]  # [B, N, 2]
   vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
   delta = torch.abs(foot_z - target_height)  # [B, N]
@@ -415,7 +423,7 @@ def stand_still(
 ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
     diff_angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
-    reward = torch.sum(torch.square(diff_angle), dim=1)
+    reward = torch.sum(torch.abs(diff_angle), dim=1)
     if command_name is not None:
         command = env.command_manager.get_command(command_name)
         if command is not None:

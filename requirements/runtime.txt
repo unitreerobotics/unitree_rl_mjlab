@@ -1,0 +1,152 @@
+# Locked runtime for Python 3.10-3.13; used by setup.py, including transitive dependencies.
+# Generated from runtime.in with uv universal resolution. Do not upgrade individual packages.
+# Public torch/torchvision versions accept matching CPU or CUDA wheel builds.
+absl-py==2.5.1
+annotated-types==0.8.0
+anyio==4.16.0
+asttokens==3.0.2
+bcrypt==5.0.0
+certifi==2026.10.23
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+charset-normalizer==3.5.2
+click==8.5.1
+cloudpickle==3.1.2
+colorama==0.4.6 ; sys_platform == 'win32'
+contourpy==1.3.2 ; python_full_version < '3.11'
+contourpy==1.3.3 ; python_full_version == '3.11.*'
+contourpy==1.4.0 ; python_full_version >= '3.12'
+cryptography==50.0.2
+cwevals==0.0.1b1
+cycler==0.12.1
+decorator==5.3.1
+deprecated==1.3.1 ; python_full_version < '3.12'
+deprecated==3.0.1 ; python_full_version >= '3.12'
+distro==1.9.0
+docstring-parser==0.18.0
+etils==1.13.0 ; python_full_version < '3.11'
+etils==1.15.0 ; python_full_version >= '3.11'
+exceptiongroup==1.3.1 ; python_full_version < '3.11'
+executing==2.3.0
+fabric==3.2.3
+filelock==4.1.0 ; python_full_version < '3.11'
+filelock==4.2.11 ; python_full_version >= '3.11'
+fonttools==4.65.0 ; python_full_version < '3.11'
+fonttools==4.68.0 ; python_full_version >= '3.11'
+fsspec==2026.9.0
+gitdb==4.0.12
+gitpython==3.2.1
+glfw==2.11.0
+googleapis-common-protos==1.76.0
+grpcio==1.85.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+imageio-ffmpeg==0.8.1
+imageio==2.38.0 ; python_full_version < '3.11'
+imageio==2.38.2 ; python_full_version >= '3.11'
+importlib-metadata==10.2.0 ; python_full_version >= '3.11'
+importlib-metadata==9.0.1 ; python_full_version < '3.11'
+importlib-resources==7.1.0 ; python_full_version < '3.11'
+invoke==2.2.1
+ipython-pygments-lexers==1.1.1 ; python_full_version >= '3.11'
+ipython==8.39.0 ; python_full_version < '3.11'
+ipython==9.18.1 ; python_full_version >= '3.11'
+jedi==0.20.1
+jinja2==3.1.6
+kiwisolver==1.5.1
+lazy-importer==0.1.0 ; python_full_version >= '3.11' and python_full_version < '3.15'
+markdown-it-py==4.3.0
+markdown==3.10.3 ; python_full_version < '3.11'
+markdown==3.11.3 ; python_full_version >= '3.11'
+markupsafe==3.0.4
+matplotlib-inline==0.2.2
+matplotlib==3.10.9 ; python_full_version < '3.11'
+matplotlib==3.11.2 ; python_full_version >= '3.11'
+mdurl==0.1.2
+mediapy==1.2.7
+mjlab==1.6.0
+mjviser==0.0.14
+ml-dtypes==0.5.4 ; python_full_version >= '3.14'
+ml-dtypes==0.7.0 ; python_full_version < '3.14'
+mpmath==1.3.0
+msgspec==0.22.0
+mujoco-warp==3.11.0
+mujoco==3.11.0
+networkx==3.4.2 ; python_full_version < '3.11'
+networkx==3.6.1 ; python_full_version == '3.11.*'
+networkx==3.7 ; python_full_version >= '3.12'
+numpy==2.2.6
+onnx-ir==1.1.0
+onnx==1.23.2
+onnxscript==0.7.2
+opentelemetry-api==1.45.2
+opentelemetry-exporter-http-transport==0.66b2
+opentelemetry-exporter-otlp-common==0.66b2
+opentelemetry-exporter-otlp-proto-common==1.45.2
+opentelemetry-exporter-otlp-proto-http==1.45.2
+opentelemetry-proto==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-semantic-conventions==0.66b2
+orjson==3.13.0 ; python_full_version < '3.13'
+packaging==26.3
+paramiko==5.1.0
+parso==0.8.7
+pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
+pillow==12.3.0 ; python_full_version < '3.11'
+pillow==13.0.0 ; python_full_version >= '3.11'
+platformdirs==4.12.4 ; python_full_version < '3.11'
+platformdirs==4.14.5 ; python_full_version >= '3.11'
+prettytable==3.16.0
+prompt-toolkit==3.0.53
+protobuf==7.36.2
+psutil==7.2.2 ; python_full_version >= '3.11' and sys_platform != 'android' and sys_platform != 'cygwin' and sys_platform != 'emscripten'
+ptyprocess==0.7.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
+pure-eval==0.2.4
+pycparser==3.11 ; python_full_version < '3.11' and implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.12 ; python_full_version >= '3.11' and implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pydantic-core==2.50.4
+pydantic==2.14.3
+pygments==2.21.0
+pynacl==1.6.2
+pyopengl==3.1.10
+pyparsing==3.3.3
+python-dateutil==3.0.0 ; python_full_version < '3.11'
+python-dateutil==4.0.0 ; python_full_version >= '3.11'
+pyvers==0.2.3
+pyyaml==6.0.3
+requests==2.34.2
+rich==14.3.4
+rsl-rl-lib==5.4.2
+scipy==1.15.3
+setuptools==84.2.1
+six==1.17.0 ; python_full_version < '3.11'
+smmap==5.0.3
+sniffio==1.3.1
+stack-data==0.6.3
+sympy==1.14.0
+tensorboard-data-server==0.7.2
+tensorboard==2.21.0
+tensordict==0.14.3
+torch==2.9.1
+torchrunx==0.4.0
+torchvision==0.24.1
+tqdm==4.70.1
+traitlets==5.16.1
+trimesh==5.2.1
+typeguard==4.6.0
+typing-extensions==4.16.0
+typing-inspection==0.4.5
+tyro==1.0.17
+tzdata==2026.6
+urllib3==2.8.0
+viser==1.1.1
+wandb==0.31.0
+warp-lang==1.19.0
+wcwidth==0.9.4
+websockets==16.1.1
+werkzeug==3.1.9
+wrapt==2.5.2
+xxhash==4.1.0
+zipp==4.1.2
+zstandard==0.25.0

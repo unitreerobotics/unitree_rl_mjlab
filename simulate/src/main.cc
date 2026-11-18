@@ -17,6 +17,7 @@
 #include "glfw_adapter.h"
 #undef private
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -99,6 +100,26 @@ namespace
   // model and data
   mjModel *m = nullptr;
   mjData *d = nullptr;
+
+  // Update before every physics step, including steps taken after re-sync.
+  void ApplyElasticBand(mjData *data)
+  {
+    if (param::config.enable_elastic_band == 1)
+    {
+      auto *force = data->xfrc_applied + param::config.band_attached_link;
+      if (elastic_band.enable_)
+      {
+        std::vector<double> x = {data->qpos[0], data->qpos[1], data->qpos[2]};
+        std::vector<double> dx = {data->qvel[0], data->qvel[1], data->qvel[2]};
+        elastic_band.Advance(x, dx);
+        std::copy(elastic_band.f_.begin(), elastic_band.f_.end(), force);
+      }
+      else
+      {
+        mju_zero(force, 3);
+      }
+    }
+  }
 
   // control noise variables
   mjtNum *ctrlnoise = nullptr;
@@ -462,6 +483,7 @@ namespace
               sim.speed_changed = false;
 
               // run single step, let next iteration deal with timing
+              ApplyElasticBand(d);
               mj_step(m, d);
               stepped = true;
             }
@@ -486,23 +508,8 @@ namespace
                   measured = true;
                 }
 
-                // elastic band on base link
-                if (param::config.enable_elastic_band == 1)
-                {
-                  if (elastic_band.enable_)
-                  {
-                    std::vector<double> x = {d->qpos[0], d->qpos[1], d->qpos[2]};
-                    std::vector<double> dx = {d->qvel[0], d->qvel[1], d->qvel[2]};
-
-                    elastic_band.Advance(x, dx);
-
-                    d->xfrc_applied[param::config.band_attached_link] = elastic_band.f_[0];
-                    d->xfrc_applied[param::config.band_attached_link + 1] = elastic_band.f_[1];
-                    d->xfrc_applied[param::config.band_attached_link + 2] = elastic_band.f_[2];
-                  }
-                }
-
                 // call mj_step
+                ApplyElasticBand(d);
                 mj_step(m, d);
                 stepped = true;
 

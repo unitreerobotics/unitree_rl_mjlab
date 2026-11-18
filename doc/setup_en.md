@@ -62,13 +62,36 @@ git clone https://github.com/unitreerobotics/unitree_rl_mjlab.git
 sudo apt install -y libyaml-cpp-dev libboost-all-dev libeigen3-dev libspdlog-dev libfmt-dev
 ```
 
-All other dependencies are specified in the setup.py file.
+`setup.py` reads the exact runtime pins from `requirements/runtime.txt` automatically.
 Navigate to the project root directory and install them with:
 
 ```bash
 cd unitree_rl_mjlab
 pip install -e .
 ```
+
+This project pins `mjlab==1.6.0`, `mujoco==3.11.0`, `mujoco-warp==3.11.0`,
+`rsl-rl-lib==5.4.2`, `torch==2.9.1`, and `torchvision==0.24.1`.
+Direct and transitive runtime dependencies use exact `==` pins. Environment markers select
+compatible fixed versions for Python 3.10–3.13; Python 3.11 is recommended.
+CPU/CUDA wheels may use different builds of the same public version.
+New upstream releases will not be selected automatically. Missing pinned versions or dependency
+conflicts cause installation to fail. Keep the `requirements` directory with `setup.py`.
+To upgrade an existing environment, run from the repository root:
+
+```bash
+python -m pip install --upgrade -e .
+python -m pip check
+```
+
+The v1.6 CLI uses Python collection syntax, e.g. `--gpu-ids '[0, 1]'` and
+`--agent.actor.hidden-dims '(512, 256, 128)'`. See [tests/README.md](../tests/README.md)
+for compatibility checks.
+
+G1 tracking now uses the local model and its default joint angles. H2 velocity tasks use
+`H2_ACTION_SCALE`. These changes affect policy inputs or action semantics: validate existing
+checkpoints against their original training configuration. Retrained policies must be deployed
+with their exported default joint angles and action scales.
 
 ## Summary
 

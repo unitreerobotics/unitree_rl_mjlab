@@ -24,6 +24,10 @@ and sim-to-real deployment.
 
 Please refer to [setup.md](doc/setup_en.md) for installation and configuration steps.
 
+This version targets **mjlab v1.6.0**, MuJoCo / MuJoCo-Warp 3.11, and RSL-RL 5.4.2.
+Upgrade an existing environment with `python -m pip install --upgrade -e .` from the repository root.
+Python 3.10–3.13 is supported; Python 3.11 is recommended.
+
 
 ## 🔁 Process Overview
 
@@ -50,7 +54,7 @@ Multi-GPU Training: Scale to multiple GPUs using --gpu-ids:
 
 ```bash
 python scripts/train.py Unitree-G1-Flat \
-  --gpu-ids 0 1 \
+  --gpu-ids '[0, 1]' \
   --env.scene.num-envs=4096
 ```
 
@@ -66,6 +70,10 @@ Available velocity tracking tasks:
 > [!NOTE]
 > For more details, refer to the mjlab documentation:
 > [mjlab documentation](https://mujocolab.github.io/mjlab/index.html).
+
+> The v1.6 CLI uses Python collection syntax: lists such as `'[0, 1]'` and tuples such as
+> `'(512, 256, 128)'`. Scalar arguments keep their existing syntax.
+> See [tests/README.md](tests/README.md) for compatibility checks.
 
 ### 2. Motion Imitation Training
 

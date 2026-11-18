@@ -16,8 +16,8 @@ struct ArticulationData
     Eigen::Vector3f GRAVITY_VEC_W = Eigen::Vector3f(0.0f, 0.0f, -1.0f);
     Eigen::Vector3f FORWARD_VEC_B = Eigen::Vector3f(1.0f, 0.0f, 0.0f);
 
-    std::vector<float> joint_stiffness; // sdk order
-    std::vector<float> joint_damping; // sdk order
+    std::vector<float> joint_stiffness; // policy order; map with joint_ids_map
+    std::vector<float> joint_damping; // policy order; map with joint_ids_map
 
     // Joint positions of all joints.
     Eigen::VectorXf joint_pos;
