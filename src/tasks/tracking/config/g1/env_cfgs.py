@@ -58,7 +58,7 @@ def unitree_g1_flat_tracking_env_cfg(
 
   cfg.events["foot_friction"].params[
     "asset_cfg"
-  ].geom_names = r"^(left|right)_foot[1-7]_collision$"
+  ].geom_names = r"^(left|right)_foot[1-5]_collision$"
   cfg.events["base_com"].params["asset_cfg"].body_names = ("torso_link",)
 
   cfg.terminations["ee_body_pos"].params["body_names"] = (

@@ -37,7 +37,7 @@ def unitree_h2_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   site_names = ("left_foot", "right_foot")
   configure_foot_height_sensor(cfg, site_names)
-  geom_names = (r"^(left|right)_foot[1-7]_collision$",)
+  geom_names = (r"^(left|right)_foot[1-5]_collision$",)
 
   feet_ground_cfg = ContactSensorCfg(
     name="feet_ground_contact",
