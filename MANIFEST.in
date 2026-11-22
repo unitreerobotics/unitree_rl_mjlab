@@ -3,4 +3,4 @@ include requirements/runtime.txt
 include requirements/README.md
 include requirements/README_zh.md
 include LICENSE
-recursive-include src/assets/robots *.xml *.stl *.STL *.obj
+recursive-include src/assets/robots *.xml *.stl *.obj

@@ -1,4 +1,4 @@
-"""Unitree As2 constants."""
+"""Unitree AS2 constants."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -14,33 +14,33 @@ from src import SRC_PATH
 # MJCF and assets.
 ##
 
-As2_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_as2" / "xmls" / "as2.xml"
-assert As2_XML.exists()
+AS2_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_as2" / "xmls" / "as2.xml"
+assert AS2_XML.exists()
 
 
 def get_spec() -> mujoco.MjSpec:
-  return mujoco.MjSpec.from_file(str(As2_XML))
+  return mujoco.MjSpec.from_file(str(AS2_XML))
 
 
 ##
 # Actuator config.
 ##
 
-As2_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
+AS2_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
   target_names_expr=(".*hip_.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=50,
   armature=0.026,
 )
-As2_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
+AS2_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
   target_names_expr=(".*thigh_.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=50,
   armature=0.026,
 )
-As2_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
+AS2_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
   target_names_expr=(".*calf_.*",),
   stiffness=60.0,
   damping=3.0,
@@ -98,18 +98,18 @@ FULL_COLLISION = CollisionCfg(
 # Final config.
 ##
 
-As2_ARTICULATION = EntityArticulationInfoCfg(
+AS2_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(
-    As2_ACTUATOR_HIP,
-    As2_ACTUATOR_THIGH,
-    As2_ACTUATOR_CALF,
+    AS2_ACTUATOR_HIP,
+    AS2_ACTUATOR_THIGH,
+    AS2_ACTUATOR_CALF,
   ),
   soft_joint_pos_limit_factor=0.9,
 )
 
 
 def get_as2_robot_cfg() -> EntityCfg:
-  """Get a fresh As2 robot configuration instance.
+  """Get a fresh AS2 robot configuration instance.
 
   Returns a new EntityCfg instance each time to avoid mutation issues when
   the config is shared across multiple places.
@@ -118,7 +118,7 @@ def get_as2_robot_cfg() -> EntityCfg:
     init_state=deepcopy(INIT_STATE),
     collisions=(deepcopy(FULL_COLLISION),),
     spec_fn=get_spec,
-    articulation=deepcopy(As2_ARTICULATION),
+    articulation=deepcopy(AS2_ARTICULATION),
   )
 
 

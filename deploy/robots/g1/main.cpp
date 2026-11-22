@@ -31,7 +31,7 @@ int main(int argc, char** argv)
     auto vm = param::helper(argc, argv);
 
     std::cout << " --- Unitree Robotics --- \n";
-    std::cout << "     G1-29dof Controller \n";
+    std::cout << "     G1-29DOF Controller \n";
 
     // Unitree DDS Config
     unitree::robot::ChannelFactory::Instance()->Init(0, vm["network"].as<std::string>());

@@ -1,4 +1,4 @@
-"""RL configuration for Unitree As2 velocity task."""
+"""RL configuration for Unitree AS2 velocity task."""
 
 from mjlab.rl import (
   RslRlModelCfg,
@@ -8,7 +8,7 @@ from mjlab.rl import (
 
 
 def unitree_as2_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-  """Create RL runner configuration for Unitree As2 velocity task."""
+  """Create RL runner configuration for Unitree AS2 velocity task."""
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
       hidden_dims=(512, 256, 128),

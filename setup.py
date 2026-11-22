@@ -20,7 +20,6 @@ setup(
     "src": [
       "assets/robots/**/*.xml",
       "assets/robots/**/*.stl",
-      "assets/robots/**/*.STL",
       "assets/robots/**/*.obj",
     ],
   },

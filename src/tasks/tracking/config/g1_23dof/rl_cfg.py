@@ -1,4 +1,4 @@
-"""RL configuration for Unitree G1_23Dof tracking task."""
+"""RL configuration for Unitree G1_23DOF tracking task."""
 
 from mjlab.rl import (
   RslRlModelCfg,
@@ -8,7 +8,7 @@ from mjlab.rl import (
 
 
 def unitree_g1_23dof_tracking_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-  """Create RL runner configuration for Unitree G1_23Dof tracking task."""
+  """Create RL runner configuration for Unitree G1_23DOF tracking task."""
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
       hidden_dims=(512, 256, 128),

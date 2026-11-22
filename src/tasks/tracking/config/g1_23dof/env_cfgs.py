@@ -1,4 +1,4 @@
-"""Unitree G1_23Dof flat tracking environment configurations."""
+"""Unitree G1_23DOF flat tracking environment configurations."""
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -16,7 +16,7 @@ def unitree_g1_23dof_flat_tracking_env_cfg(
   has_state_estimation: bool = True,
   play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
-  """Create Unitree G1_23Dof flat terrain tracking configuration."""
+  """Create Unitree G1_23DOF flat terrain tracking configuration."""
   cfg = make_tracking_env_cfg()
 
   cfg.scene.entities = {"robot": get_g1_23dof_robot_cfg()}

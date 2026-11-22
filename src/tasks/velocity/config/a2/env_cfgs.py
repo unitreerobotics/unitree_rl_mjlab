@@ -29,6 +29,8 @@ def unitree_a2_rough_env_cfg(
 
   cfg.sim.mujoco.ccd_iterations = 500
   cfg.sim.contact_sensor_maxmatch = 500
+  # Let MuJoCo-Warp 3.11 size the contact buffer from the compiled model.
+  cfg.sim.nconmax = None
 
   cfg.scene.entities = {"robot": get_a2_robot_cfg()}
 

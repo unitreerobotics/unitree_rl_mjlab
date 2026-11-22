@@ -8,7 +8,7 @@ from .env_cfgs import (
 from .rl_cfg import unitree_as2_ppo_runner_cfg
 
 register_mjlab_task(
-  task_id="Unitree-As2-Rough",
+  task_id="Unitree-AS2-Rough",
   env_cfg=unitree_as2_rough_env_cfg(),
   play_env_cfg=unitree_as2_rough_env_cfg(play=True),
   rl_cfg=unitree_as2_ppo_runner_cfg(),
@@ -16,7 +16,7 @@ register_mjlab_task(
 )
 
 register_mjlab_task(
-  task_id="Unitree-As2-Flat",
+  task_id="Unitree-AS2-Flat",
   env_cfg=unitree_as2_flat_env_cfg(),
   play_env_cfg=unitree_as2_flat_env_cfg(play=True),
   rl_cfg=unitree_as2_ppo_runner_cfg(),

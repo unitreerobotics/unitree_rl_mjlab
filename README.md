@@ -4,7 +4,7 @@
 ## ✳️ Overview
 Unitree RL Mjlab is a reinforcement learning project built upon the
 [mjlab](https://github.com/mujocolab/mjlab.git), using MuJoCo as its 
-physics simulation backend, currently supporting Unitree Go2, A2, As2, G1, R1, H1_2 and H2.
+physics simulation backend, currently supporting Unitree GO2, A2, AS2, G1, R1, H1_2 and H2.
 
 Mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s proven API
 with best-in-class [MuJoCo](https://github.com/google-deepmind/mujoco_warp)
@@ -60,9 +60,9 @@ python scripts/train.py Unitree-G1-Flat \
 
 - The first argument (e.g., Mjlab-Velocity-Flat-Unitree-G1) specifies the training task.
 Available velocity tracking tasks:
-  - Unitree-Go2-Flat
+  - Unitree-GO2-Flat
   - Unitree-G1-Flat
-  - Unitree-G1-23Dof-Flat
+  - Unitree-G1-23DOF-Flat
   - Unitree-H1_2-Flat
   - Unitree-A2-Flat
   - Unitree-R1-Flat
@@ -106,7 +106,7 @@ python scripts/train.py Unitree-G1-Tracking-No-State-Estimation --motion_file=sr
 
 Available tasks:
   - Unitree-G1-Tracking-No-State-Estimation
-  - Unitree-G1-23Dof-Tracking-No-State-Estimation
+  - Unitree-G1-23DOF-Tracking-No-State-Estimation
 
 </div>
 
@@ -147,7 +147,7 @@ python scripts/play.py Unitree-G1-Tracking-No-State-Estimation --motion_file=src
 
 **Visualization**：
 
-| Go2                              | G1                             | H1_2                               | G1_mimic                          |
+| GO2                              | G1                             | H1_2                               | G1_mimic                          |
 |----------------------------------|--------------------------------|------------------------------------|-----------------------------------|
 | ![go2](doc/gif/go2-velocity.gif) | ![g1](doc/gif/g1-velocity.gif) | ![h1_2](doc/gif/h1_2-velocity.gif) | ![g1_mimic](doc/gif/g1-mimic.gif) |
 
@@ -230,7 +230,7 @@ cd deploy/robots/g1/build
 
 **Deployment Results**：
 
-| Go2                                                    | G1                                                    | H1_2           | G1_mimic                                           |
+| GO2                                                    | G1                                                    | H1_2           | G1_mimic                                           |
 |--------------------------------------------------------|-------------------------------------------------------|----------------|----------------------------------------------------|
 | <img src="doc/gif/go2-velocity-real.gif" width="300"/> | <img src="doc/gif/g1-velocity-real.gif" width="300"/> | <img src="doc/gif/h1_2-velocity-real.gif" width="300"/> | <img src="doc/gif/g1-mimic-real.gif" width="300"/> |
 

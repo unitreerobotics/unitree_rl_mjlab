@@ -21,23 +21,23 @@
   </default>
 
   <asset>
-    <mesh name="base_link" file="base_link.STL"/>
-    <mesh name="left_front_Link1" file="left_front_Link1.STL"/>
-    <mesh name="left_front_Link2" file="left_front_Link2.STL"/>
-    <mesh name="left_front_Link3" file="left_front_Link3.STL"/>
-    <mesh name="left_front_Link4" file="left_front_Link4.STL"/>
-    <mesh name="left_hind_Link1" file="left_hind_Link1.STL"/>
-    <mesh name="left_hind_Link2" file="left_hind_Link2.STL"/>
-    <mesh name="left_hind_Link3" file="left_hind_Link3.STL"/>
-    <mesh name="left_hind_Link4" file="left_hind_Link4.STL"/>
-    <mesh name="right_front_Link1" file="right_front_Link1.STL"/>
-    <mesh name="right_front_Link2" file="right_front_Link2.STL"/>
-    <mesh name="right_front_Link3" file="right_front_Link3.STL"/>
-    <mesh name="right_front_Link4" file="right_front_Link4.STL"/>
-    <mesh name="right_hind_Link1" file="right_hind_Link1.STL"/>
-    <mesh name="right_hind_Link2" file="right_hind_Link2.STL"/>
-    <mesh name="right_hind_Link3" file="right_hind_Link3.STL"/>
-    <mesh name="right_hind_Link4" file="right_hind_Link4.STL"/>
+    <mesh name="base_link" file="base_link.stl"/>
+    <mesh name="left_front_Link1" file="left_front_link1.stl"/>
+    <mesh name="left_front_Link2" file="left_front_link2.stl"/>
+    <mesh name="left_front_Link3" file="left_front_link3.stl"/>
+    <mesh name="left_front_Link4" file="left_front_link4.stl"/>
+    <mesh name="left_hind_Link1" file="left_hind_link1.stl"/>
+    <mesh name="left_hind_Link2" file="left_hind_link2.stl"/>
+    <mesh name="left_hind_Link3" file="left_hind_link3.stl"/>
+    <mesh name="left_hind_Link4" file="left_hind_link4.stl"/>
+    <mesh name="right_front_Link1" file="right_front_link1.stl"/>
+    <mesh name="right_front_Link2" file="right_front_link2.stl"/>
+    <mesh name="right_front_Link3" file="right_front_link3.stl"/>
+    <mesh name="right_front_Link4" file="right_front_link4.stl"/>
+    <mesh name="right_hind_Link1" file="right_hind_link1.stl"/>
+    <mesh name="right_hind_Link2" file="right_hind_link2.stl"/>
+    <mesh name="right_hind_Link3" file="right_hind_link3.stl"/>
+    <mesh name="right_hind_Link4" file="right_hind_link4.stl"/>
   </asset>
 
   <worldbody>

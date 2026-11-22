@@ -1,4 +1,4 @@
-"""Unitree Go2 constants."""
+"""Unitree GO2 constants."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -109,7 +109,7 @@ GO2_ARTICULATION = EntityArticulationInfoCfg(
 
 
 def get_go2_robot_cfg() -> EntityCfg:
-  """Get a fresh Go2 robot configuration instance.
+  """Get a fresh GO2 robot configuration instance.
 
   Returns a new EntityCfg instance each time to avoid mutation issues when
   the config is shared across multiple places.

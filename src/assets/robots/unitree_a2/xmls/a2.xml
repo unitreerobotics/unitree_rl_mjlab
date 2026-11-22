@@ -1,5 +1,5 @@
 <mujoco model="a2">
-  <compiler angle="radian" meshdir="assets" autolimits="true" />
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
 
   <default>
     <default class="a2">
@@ -14,23 +14,23 @@
   </default>
 
   <asset>
-    <mesh name="base_link" file="base_link.STL"/>
-    <mesh name="left_front_Link1" file="left_front_Link1.STL"/>
-    <mesh name="left_front_Link2" file="left_front_Link2.STL"/>
-    <mesh name="left_front_Link3" file="left_front_Link3.STL"/>
-    <mesh name="left_front_Link4" file="left_front_Link4.STL"/>
-    <mesh name="left_hind_Link1" file="left_hind_Link1.STL"/>
-    <mesh name="left_hind_Link2" file="left_hind_Link2.STL"/>
-    <mesh name="left_hind_Link3" file="left_hind_Link3.STL"/>
-    <mesh name="left_hind_Link4" file="left_hind_Link4.STL"/>
-    <mesh name="right_front_Link1" file="right_front_Link1.STL"/>
-    <mesh name="right_front_Link2" file="right_front_Link2.STL"/>
-    <mesh name="right_front_Link3" file="right_front_Link3.STL"/>
-    <mesh name="right_front_Link4" file="right_front_Link4.STL"/>
-    <mesh name="right_hind_Link1" file="right_hind_Link1.STL"/>
-    <mesh name="right_hind_Link2" file="right_hind_Link2.STL"/>
-    <mesh name="right_hind_Link3" file="right_hind_Link3.STL"/>
-    <mesh name="right_hind_Link4" file="right_hind_Link4.STL"/>
+    <mesh name="base_link" file="base_link.stl"/>
+    <mesh name="left_front_Link1" file="left_front_link1.stl"/>
+    <mesh name="left_front_Link2" file="left_front_link2.stl"/>
+    <mesh name="left_front_Link3" file="left_front_link3.stl"/>
+    <mesh name="left_front_Link4" file="left_front_link4.stl"/>
+    <mesh name="left_hind_Link1" file="left_hind_link1.stl"/>
+    <mesh name="left_hind_Link2" file="left_hind_link2.stl"/>
+    <mesh name="left_hind_Link3" file="left_hind_link3.stl"/>
+    <mesh name="left_hind_Link4" file="left_hind_link4.stl"/>
+    <mesh name="right_front_Link1" file="right_front_link1.stl"/>
+    <mesh name="right_front_Link2" file="right_front_link2.stl"/>
+    <mesh name="right_front_Link3" file="right_front_link3.stl"/>
+    <mesh name="right_front_Link4" file="right_front_link4.stl"/>
+    <mesh name="right_hind_Link1" file="right_hind_link1.stl"/>
+    <mesh name="right_hind_Link2" file="right_hind_link2.stl"/>
+    <mesh name="right_hind_Link3" file="right_hind_link3.stl"/>
+    <mesh name="right_hind_Link4" file="right_hind_link4.stl"/>
   </asset>
 
   <worldbody>
@@ -43,7 +43,7 @@
       <geom name="base3_collision" class="collision" size="0.025 0.015 0.008" pos="-0.22 0 0.119" quat="0.999888 0 -0.0149994 0" type="box" rgba="0.792157 0.819608 0.933333 1"/>
       <geom name="base4_collision" class="collision" size="0.03 0.05 0.005" pos="0.365 0 0.1" quat="0.939373 0 -0.342898 0" type="box" rgba="0.792157 0.819608 0.933333 1"/>
       <geom name="base5_collision" class="collision" size="0.0225 0.05 0.005" pos="-0.31 0 0.112" quat="0.939373 0 0.342898 0" type="box" rgba="0.792157 0.819608 0.933333 1"/>
-      <site name="imu" pos="0 0 0" />
+      <site name="imu" pos="0 0 0"/>
       <body name="FL_hip" pos="0.25944 0.075113 0">
         <inertial pos="-0.002408 -0.01622 0.000239" quat="0.66751 0.421649 0.565191 0.239168" mass="1.62" diaginertia="0.0016644 0.00161602 0.00145995"/>
         <joint name="FL_hip_joint" pos="0 0 0" axis="1 0 0" range="-1.01 1.01"/>

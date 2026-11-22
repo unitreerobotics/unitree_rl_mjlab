@@ -1,4 +1,4 @@
-"""Unitree Go2 velocity environment configurations."""
+"""Unitree GO2 velocity environment configurations."""
 
 from typing import Literal
 
@@ -24,15 +24,17 @@ TerrainType = Literal["rough", "obstacles"]
 def unitree_go2_rough_env_cfg(
   play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
-  """Create Unitree Go2 rough terrain velocity configuration."""
+  """Create Unitree GO2 rough terrain velocity configuration."""
   cfg = make_velocity_env_cfg()
 
   cfg.sim.mujoco.ccd_iterations = 500
   cfg.sim.contact_sensor_maxmatch = 500
+  # Let MuJoCo-Warp 3.11 size the contact buffer from the compiled model.
+  cfg.sim.nconmax = None
 
   cfg.scene.entities = {"robot": get_go2_robot_cfg()}
 
-  # Set raycast sensor frame to Go2 base_link.
+  # Set raycast sensor frame to GO2 base_link.
   for sensor in cfg.scene.sensors or ():
     if sensor.name == "terrain_scan":
       assert isinstance(sensor, RayCastSensorCfg)
@@ -142,7 +144,7 @@ def unitree_go2_rough_env_cfg(
 
 
 def unitree_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  """Create Unitree Go2 flat terrain velocity configuration."""
+  """Create Unitree GO2 flat terrain velocity configuration."""
   cfg = unitree_go2_rough_env_cfg(play=play)
 
   cfg.sim.njmax = 300
