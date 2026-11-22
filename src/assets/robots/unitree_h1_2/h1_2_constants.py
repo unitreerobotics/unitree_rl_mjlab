@@ -5,18 +5,16 @@ from pathlib import Path
 
 import mujoco
 
-from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.spec_config import CollisionCfg
+from src import SRC_PATH
 
 ##
 # MJCF and assets.
 ##
 
-H1_2_XML: Path = (
-  SRC_PATH / "assets" / "robots" / "unitree_h1_2" / "xmls" / "h1_2.xml"
-)
+H1_2_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_h1_2" / "xmls" / "h1_2.xml"
 assert H1_2_XML.exists()
 
 
@@ -41,9 +39,7 @@ H1_2_ACTUATOR_M107_24_2 = BuiltinPositionActuatorCfg(
   armature=0.025,
 )
 H1_2_ACTUATOR_M107_24_1 = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*_knee.*",
-  ),
+  target_names_expr=(".*_knee.*",),
   stiffness=157.7,
   damping=10.1,
   effort_limit=300.0,
@@ -74,7 +70,6 @@ H1_2_ACTUATOR_GO2HV_2 = BuiltinPositionActuatorCfg(
   effort_limit=18.0,
   armature=0.002,
 )
-
 
 
 ##

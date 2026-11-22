@@ -4,7 +4,7 @@ from typing import cast
 
 import torch
 import wandb
-from rsl_rl.env.vec_env import VecEnv
+from rsl_rl.utils import WandbLogWriter
 from torch import nn
 
 from mjlab.rl import RslRlVecEnvWrapper
@@ -48,17 +48,6 @@ class _OnnxMotionModel(nn.Module):
 class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
   env: RslRlVecEnvWrapper
 
-  def __init__(
-    self,
-    env: VecEnv,
-    train_cfg: dict,
-    log_dir: str | None = None,
-    device: str = "cpu",
-    registry_name: str | None = None,
-  ):
-    super().__init__(env, train_cfg, log_dir, device)
-    self.registry_name = registry_name
-
   def export_motion_policy_to_onnx(
     self, path: str, filename: str = "policy.onnx", verbose: bool = False
   ) -> None:
@@ -99,7 +88,7 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
     self.export_policy_to_onnx(policy_path, "policy.onnx")
     run_name: str = (
       wandb.run.name
-      if self.logger.logger_type in ("wandb", "WandbLogWriter") and wandb.run
+      if isinstance(self.logger.writer, WandbLogWriter) and wandb.run
       else "local"
     )  # type: ignore[assignment]
     metadata = get_base_metadata(self.env.unwrapped, run_name)
@@ -113,11 +102,5 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
       }
     )
     attach_metadata_to_onnx(os.path.join(policy_path, filename), metadata)
-    if (
-      self.logger.logger_type in ("wandb", "WandbLogWriter")
-      and self.cfg["upload_model"]
-    ):
+    if isinstance(self.logger.writer, WandbLogWriter) and self.cfg["upload_model"]:
       wandb.save(os.path.join(policy_path, filename), base_path=policy_path)
-      if self.registry_name is not None:
-        wandb.run.use_artifact(self.registry_name)  # type: ignore
-        self.registry_name = None

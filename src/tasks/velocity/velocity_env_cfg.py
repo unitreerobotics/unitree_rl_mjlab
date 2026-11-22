@@ -7,6 +7,7 @@ Robot-specific configurations call the factory and customize as needed.
 import math
 from dataclasses import replace
 
+import src.tasks.velocity.mdp as mdp
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp import dr
@@ -22,17 +23,18 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sensor import (
-  GridPatternCfg, ObjRef, RayCastSensorCfg, RingPatternCfg, TerrainHeightSensorCfg,
+  GridPatternCfg,
+  ObjRef,
+  RayCastSensorCfg,
+  RingPatternCfg,
+  TerrainHeightSensorCfg,
 )
 from mjlab.sim import MujocoCfg, SimulationCfg
-from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.terrains.config import ROUGH_TERRAINS_CFG
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
-
-import src.tasks.velocity.mdp as mdp
 
 
 def configure_foot_height_sensor(
@@ -42,7 +44,9 @@ def configure_foot_height_sensor(
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     TerrainHeightSensorCfg(
       name="foot_height_scan",
-      frame=tuple(ObjRef(type="site", name=name, entity="robot") for name in site_names),
+      frame=tuple(
+        ObjRef(type="site", name=name, entity="robot") for name in site_names
+      ),
       pattern=RingPatternCfg.single_ring(radius=0.03, num_samples=6),
       ray_alignment="yaw",
       max_distance=1.0,
@@ -333,7 +337,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "command_threshold": 0.1,
         "command_name": "twist",
         "sensor_name": "feet_ground_contact",
-      }
+      },
     ),
     "foot_clearance": RewardTermCfg(
       func=mdp.feet_clearance,
@@ -401,7 +405,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       params={
         "command_name": "twist",
         "velocity_stages": [
-          {"step": 0, "lin_vel_x": (-0.5, 1.0), "lin_vel_y": (-0.5, 0.5), "ang_vel_z": (-1.0, 1.0)},
+          {
+            "step": 0,
+            "lin_vel_x": (-0.5, 1.0),
+            "lin_vel_y": (-0.5, 0.5),
+            "ang_vel_z": (-1.0, 1.0),
+          },
           {"step": 5000 * 24, "lin_vel_x": (-1.0, 2.0), "lin_vel_y": (-1.0, 1.0)},
         ],
       },

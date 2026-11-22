@@ -5,19 +5,16 @@ from pathlib import Path
 
 import mujoco
 
-from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
-from mjlab.utils.actuator import ElectricActuator, reflected_inertia
 from mjlab.utils.spec_config import CollisionCfg
+from src import SRC_PATH
 
 ##
 # MJCF and assets.
 ##
 
-As2_XML: Path = (
-  SRC_PATH / "assets" / "robots" / "unitree_as2" / "xmls" / "as2.xml"
-)
+As2_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_as2" / "xmls" / "as2.xml"
 assert As2_XML.exists()
 
 
@@ -30,27 +27,21 @@ def get_spec() -> mujoco.MjSpec:
 ##
 
 As2_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*hip_.*",
-  ),
+  target_names_expr=(".*hip_.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=50,
   armature=0.026,
 )
 As2_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*thigh_.*",
-  ),
+  target_names_expr=(".*thigh_.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=50,
   armature=0.026,
 )
 As2_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*calf_.*",
-  ),
+  target_names_expr=(".*calf_.*",),
   stiffness=60.0,
   damping=3.0,
   effort_limit=75,
@@ -129,6 +120,7 @@ def get_as2_robot_cfg() -> EntityCfg:
     spec_fn=get_spec,
     articulation=deepcopy(As2_ARTICULATION),
   )
+
 
 if __name__ == "__main__":
   import mujoco.viewer as viewer

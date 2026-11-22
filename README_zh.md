@@ -239,3 +239,6 @@ cd deploy/robots/g1/build
 - [mujoco_warp](https://github.com/google-deepmind/mujoco_warp.git): 提供 GPU 加速渲染与仿真接口。
 - [mujoco](https://github.com/google-deepmind/mujoco.git): 提供强大仿真功能。
 
+## 📄  许可证
+
+本项目基于 [Apache License 2.0](LICENSE) 发布。第三方组件与动作数据沿用其原有许可证，详见 [doc/license](doc/license)。

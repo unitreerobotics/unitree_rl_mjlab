@@ -17,6 +17,7 @@ from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.utils.gpu import select_gpus
 from mjlab.utils.os import dump_yaml, get_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
+from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
 
@@ -96,7 +97,8 @@ def run_train(
     )
 
   env = ManagerBasedRlEnv(
-    cfg=cfg.env, device=device,
+    cfg=cfg.env,
+    device=device,
     render_mode="rgb_array" if cfg.video and rank == 0 else None,
   )
 
@@ -126,8 +128,14 @@ def run_train(
       dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
       dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
 
+    if agent_cfg["logger"] == "wandb":
+      agent_cfg["logger"] = {
+        "class_name": "src.utils.wandb_log_writer:UnitreeWandbLogWriter",
+        "project_name": agent_cfg["wandb_project"],
+      }
     runner = runner_cls(env, agent_cfg, str(log_dir), device)
 
+    add_wandb_tags(cfg.agent.wandb_tags)
     runner.add_git_repo_to_log(__file__)
     if resume_path is not None:
       print(f"[INFO]: Loading model checkpoint from: {resume_path}")
@@ -149,7 +157,8 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
   # load_run='.*' cannot select that new, empty directory as the latest run.
   resume_path = (
     get_checkpoint_path(log_root_path, args.agent.load_run, args.agent.load_checkpoint)
-    if args.agent.resume else None
+    if args.agent.resume
+    else None
   )
   log_dir_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
   if args.agent.run_name:
@@ -199,7 +208,7 @@ def main():
   # Parse first argument to choose the task.
   # Import tasks to populate the registry.
   import mjlab.tasks  # noqa: F401
-  import src.tasks
+  import src.tasks  # noqa: F401
 
   all_tasks = list_tasks()
   chosen_task, remaining_args = tyro.cli(

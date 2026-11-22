@@ -5,7 +5,6 @@ from pathlib import Path
 
 import mujoco
 
-from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.actuator import (
@@ -13,14 +12,13 @@ from mjlab.utils.actuator import (
   reflected_inertia_from_two_stage_planetary,
 )
 from mjlab.utils.spec_config import CollisionCfg
+from src import SRC_PATH
 
 ##
 # MJCF and assets.
 ##
 
-G1_XML: Path = (
-  SRC_PATH / "assets" / "robots" / "unitree_g1" / "xmls" / "g1.xml"
-)
+G1_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_g1" / "xmls" / "g1.xml"
 assert G1_XML.exists()
 
 

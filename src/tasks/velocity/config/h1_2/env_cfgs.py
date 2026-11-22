@@ -1,9 +1,5 @@
 """Unitree H1_2 velocity environment configurations."""
 
-from src.assets.robots import (
-  H1_2_ACTION_SCALE,
-  get_h1_2_robot_cfg,
-)
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -12,6 +8,10 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
+from src.assets.robots import (
+  H1_2_ACTION_SCALE,
+  get_h1_2_robot_cfg,
+)
 from src.tasks.velocity.velocity_env_cfg import (
   configure_foot_height_sensor,
   make_velocity_env_cfg,
@@ -182,7 +182,9 @@ def unitree_h1_2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # Remove raycast sensor and height scan (no terrain to scan).
   cfg.scene.sensors = tuple(
-    s for s in (cfg.scene.sensors or ()) if s.name not in ("terrain_scan", "foot_height_scan")
+    s
+    for s in (cfg.scene.sensors or ())
+    if s.name not in ("terrain_scan", "foot_height_scan")
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]

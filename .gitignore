@@ -1,5 +1,19 @@
-*.egg-info
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local Python environments and package builds
+.venv/
+*.egg-info/
+/build/
+/dist/
+
+# IDE and local run outputs
 .idea
+.codex/
 outputs
 logs
 wandb

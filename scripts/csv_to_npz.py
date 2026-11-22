@@ -1,17 +1,15 @@
+import os
 from typing import Any
 
 import numpy as np
 import torch
 import tyro
-import os
 from tqdm import tqdm
 
 import mjlab
 from mjlab.entity import Entity
 from mjlab.scene import Scene
 from mjlab.sim.sim import Simulation, SimulationCfg
-from src.tasks.tracking.config.g1.env_cfgs import unitree_g1_flat_tracking_env_cfg
-from src.tasks.tracking.config.g1_23dof.env_cfgs import unitree_g1_23dof_flat_tracking_env_cfg
 from mjlab.utils.lab_api.math import (
   axis_angle_from_quat,
   quat_conjugate,
@@ -20,6 +18,10 @@ from mjlab.utils.lab_api.math import (
 )
 from mjlab.viewer.offscreen_renderer import OffscreenRenderer
 from mjlab.viewer.viewer_config import ViewerConfig
+from src.tasks.tracking.config.g1.env_cfgs import unitree_g1_flat_tracking_env_cfg
+from src.tasks.tracking.config.g1_23dof.env_cfgs import (
+  unitree_g1_23dof_flat_tracking_env_cfg,
+)
 
 
 class MotionLoader:
@@ -332,9 +334,9 @@ def main(
   """
   sim_cfg = SimulationCfg()
   sim_cfg.mujoco.timestep = 1.0 / output_fps
-  if robot == "g1":    # 29 Dof
+  if robot == "g1":  # 29 Dof
     scene = Scene(unitree_g1_flat_tracking_env_cfg().scene, device=device)
-    joint_names=[
+    joint_names = [
       "left_hip_pitch_joint",
       "left_hip_roll_joint",
       "left_hip_yaw_joint",
@@ -368,7 +370,7 @@ def main(
     output_dir = "./src/assets/motions/g1"
   elif robot == "g1_23dof":
     scene = Scene(unitree_g1_23dof_flat_tracking_env_cfg().scene, device=device)
-    joint_names=[    # 23 Dof
+    joint_names = [  # 23 Dof
       "left_hip_pitch_joint",
       "left_hip_roll_joint",
       "left_hip_yaw_joint",

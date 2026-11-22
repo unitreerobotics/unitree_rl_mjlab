@@ -15,7 +15,9 @@ register_mjlab_task(
 register_mjlab_task(
   task_id="Unitree-G1-23Dof-Tracking-No-State-Estimation",
   env_cfg=unitree_g1_23dof_flat_tracking_env_cfg(has_state_estimation=False),
-  play_env_cfg=unitree_g1_23dof_flat_tracking_env_cfg(has_state_estimation=False, play=True),
+  play_env_cfg=unitree_g1_23dof_flat_tracking_env_cfg(
+    has_state_estimation=False, play=True
+  ),
   rl_cfg=unitree_g1_23dof_tracking_ppo_runner_cfg(),
   runner_cls=MotionTrackingOnPolicyRunner,
 )

@@ -1,15 +1,14 @@
 """Unitree G1_23Dof flat tracking environment configurations."""
 
-from src.assets.robots.unitree_g1.g1_23dof_constants import (
-  G1_23DOF_ACTION_SCALE,
-  get_g1_23dof_robot_cfg,
-)
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 from mjlab.tasks.tracking.mdp import MotionCommandCfg
-
+from src.assets.robots.unitree_g1.g1_23dof_constants import (
+  G1_23DOF_ACTION_SCALE,
+  get_g1_23dof_robot_cfg,
+)
 from src.tasks.tracking.tracking_env_cfg import make_tracking_env_cfg
 
 

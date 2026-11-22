@@ -244,3 +244,8 @@ This project would not be possible without the contributions of the following re
 - [rsl_rl](https://github.com/leggedrobotics/rsl_rl.git): reinforcement learning algorithm implementation
 - [mujoco_warp](https://github.com/google-deepmind/mujoco_warp.git): GPU-accelerated rendering and simulation interface
 - [mujoco](https://github.com/google-deepmind/mujoco.git): high-fidelity rigid-body physics engine
+
+## 📄  License
+
+This project is released under the [Apache License 2.0](LICENSE). Third-party
+components and motion data keep their original licenses, see [doc/license](doc/license).

@@ -7,6 +7,8 @@ import torch
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.tasks.velocity.mdp.velocity_command import (
   UniformVelocityCommand as MjlabUniformVelocityCommand,
+)
+from mjlab.tasks.velocity.mdp.velocity_command import (
   UniformVelocityCommandCfg as MjlabUniformVelocityCommandCfg,
 )
 

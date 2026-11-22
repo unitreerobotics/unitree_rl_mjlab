@@ -1,14 +1,20 @@
-# 固定安装版本
+# Pinned runtime versions
 
-`runtime.in` 记录直接依赖的目标版本，`runtime.txt` 包含解析后的直接和间接依赖。
-`setup.py` 将 `runtime.txt` 的每个有效条目作为安装依赖，因此普通的
-`python -m pip install -e .` 或 wheel 安装都会应用这些版本，无需额外传入 constraints 文件。
-源码包通过 `MANIFEST.in` 携带版本清单；构建依赖另在 `pyproject.toml` 中固定。
+`runtime.in` records the target versions of the direct dependencies, and `runtime.txt`
+contains the resolved direct and transitive dependencies. `setup.py` uses every valid
+entry of `runtime.txt` as an install requirement, so a plain
+`python -m pip install -e .` or a wheel install applies these versions without an extra
+constraints file. The source distribution ships the manifests through `MANIFEST.in`;
+build dependencies are pinned separately in `pyproject.toml`.
 
-清单针对 Python 3.10–3.13 进行 universal 解析，使用环境标记处理不同 Python 版本的依赖差异。
-PyTorch 与 torchvision 使用公开版本号，允许安装相同版本的 CPU/CUDA 构建；
-对应 CUDA wheel 的原生 CUDA 库版本由该 wheel 的元数据固定。
+The manifest is resolved universally for Python 3.10–3.13 and uses environment markers
+for dependencies that differ between Python versions. PyTorch and torchvision use their
+public version numbers, so matching CPU or CUDA builds can be installed; the native CUDA
+library versions of a CUDA wheel are pinned by that wheel's own metadata.
 
-上游更新不会自动更新清单。主动升级时，修改 `runtime.in`，重新解析整个依赖集合，
-审阅 `runtime.txt` 的全部变化，再运行 [模型与训练检查](../tests/README.md) 和安装包构建检查。
-不要只放宽 `mjlab` 的版本，也不要用 `pip install --no-deps` 绕过安装依赖检查。
+Upstream releases do not update the manifest automatically. To upgrade on purpose, edit
+`runtime.in`, re-resolve the whole dependency set, review every change in `runtime.txt`,
+then re-run the training, play and package build checks. Do not loosen only the `mjlab`
+version, and do not bypass the dependency check with `pip install --no-deps`.
+
+[中文](README_zh.md)

@@ -9,6 +9,7 @@ Based on https://github.com/HybridRobotics/whole_body_tracking
 Commit: f8e20c880d9c8ec7172a13d3a88a65e3a5a88448
 """
 
+import src.tasks.tracking.mdp as mdp
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -21,13 +22,10 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
-from mjlab.tasks.tracking import mdp
 from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
-
-import src.tasks.tracking.mdp as mdp
 
 VELOCITY_RANGE = {
   "x": (-0.5, 0.5),

@@ -5,18 +5,16 @@ from pathlib import Path
 
 import mujoco
 
-from src import SRC_PATH
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.spec_config import CollisionCfg
+from src import SRC_PATH
 
 ##
 # MJCF and assets.
 ##
 
-H2_XML: Path = (
-  SRC_PATH / "assets" / "robots" / "unitree_h2" / "xmls" / "h2.xml"
-)
+H2_XML: Path = SRC_PATH / "assets" / "robots" / "unitree_h2" / "xmls" / "h2.xml"
 assert H2_XML.exists()
 
 
@@ -41,27 +39,21 @@ H2_ACTUATOR_LEG = BuiltinPositionActuatorCfg(
   armature=0.01,
 )
 H2_ACTUATOR_ANKLE_ROLL = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*_ankle_roll.*",
-  ),
+  target_names_expr=(".*_ankle_roll.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=19.0,
   armature=0.01,
 )
 H2_ACTUATOR_ANKLE_PITCH = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    ".*_ankle_pitch.*",
-  ),
+  target_names_expr=(".*_ankle_pitch.*",),
   stiffness=40.0,
   damping=2.0,
   effort_limit=66.0,
   armature=0.01,
 )
 H2_ACTUATOR_WAIST = BuiltinPositionActuatorCfg(
-  target_names_expr=(
-    "waist_.*",
-  ),
+  target_names_expr=("waist_.*",),
   stiffness=150.0,
   damping=3.0,
   effort_limit=120.0,
