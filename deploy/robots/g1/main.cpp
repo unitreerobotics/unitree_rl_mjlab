@@ -50,13 +50,12 @@ int main(int argc, char** argv)
 
     std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
     std::cout << "And then press [R2 + A] to start controlling the robot.\n";
-    std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
+    std::cout << "And then press [R1 + A] to control the robot dance.\n";
 
     while (true)
     {
         sleep(1);
     }
-    
+
     return 0;
 }
-

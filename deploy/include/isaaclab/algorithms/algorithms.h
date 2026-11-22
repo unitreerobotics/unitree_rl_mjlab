@@ -20,7 +20,7 @@ public:
         std::lock_guard<std::mutex> lock(act_mtx_);
         return action;
     }
-    
+
     std::vector<float> action;
 protected:
     std::mutex act_mtx_;

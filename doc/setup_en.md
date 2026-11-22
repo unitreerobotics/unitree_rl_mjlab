@@ -85,8 +85,7 @@ python -m pip check
 ```
 
 The v1.6 CLI uses Python collection syntax, e.g. `--gpu-ids '[0, 1]'` and
-`--agent.actor.hidden-dims '(512, 256, 128)'`. See [tests/README.md](../tests/README.md)
-for compatibility checks.
+`--agent.actor.hidden-dims '(512, 256, 128)'`.
 
 G1 tracking now uses the local model and its default joint angles. H2 velocity tasks use
 `H2_ACTION_SCALE`. These changes affect policy inputs or action semantics: validate existing

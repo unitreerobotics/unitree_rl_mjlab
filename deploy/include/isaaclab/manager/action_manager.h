@@ -11,7 +11,7 @@
 namespace isaaclab
 {
 
-class ActionTerm 
+class ActionTerm
 {
 public:
     ActionTerm(YAML::Node cfg, ManagerBasedRLEnv* env): cfg(cfg), env(env) {}
@@ -95,7 +95,7 @@ public:
     int total_action_dim()
     {
         auto dims = action_dim();
-        
+
         return std::accumulate(dims.begin(), dims.end(), 0);
     }
 

@@ -77,7 +77,7 @@ REGISTER_OBSERVATION(joint_pos_rel)
             data = tmp_data;
         }
     } catch(const std::exception& e) {
-    
+
     }
 
     return data;

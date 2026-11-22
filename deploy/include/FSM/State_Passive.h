@@ -8,8 +8,8 @@
 class State_Passive : public FSMState
 {
 public:
-    State_Passive(int state, std::string state_string = "Passive") 
-    : FSMState(state, state_string) 
+    State_Passive(int state, std::string state_string = "Passive")
+    : FSMState(state, state_string)
     {
         auto motor_mode = param::config["FSM"]["Passive"]["mode"];
         if(motor_mode.IsDefined())
@@ -20,7 +20,7 @@ public:
                 lowcmd->msg_.motor_cmd()[i].mode() = values[i];
             }
         }
-    } 
+    }
 
     void enter()
     {

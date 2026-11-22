@@ -13,7 +13,7 @@ inline boost::bimap<int, std::string> FSMStringMap;
 class BaseState
 {
 public:
-    BaseState(int state, std::string state_string) : state_(state) 
+    BaseState(int state, std::string state_string) : state_(state)
     {
         FSMStringMap.insert({state, state_string});
     }
@@ -50,5 +50,4 @@ inline FsmMap& getFsmMap() {
         __registrar_##Derived() {                                                       \
             getFsmMap()[#Derived] = __factory_##Derived;                                \
         }                                                                               \
-    } __registrar_instance_##Derived;                                                   \
-    
+    } __registrar_instance_##Derived;

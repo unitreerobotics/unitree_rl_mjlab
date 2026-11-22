@@ -1,5 +1,5 @@
-import os
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -18,6 +18,7 @@ from mjlab.utils.lab_api.math import (
 )
 from mjlab.viewer.offscreen_renderer import OffscreenRenderer
 from mjlab.viewer.viewer_config import ViewerConfig
+from src import SRC_PATH
 from src.tasks.tracking.config.g1.env_cfgs import unitree_g1_flat_tracking_env_cfg
 from src.tasks.tracking.config.g1_23dof.env_cfgs import (
   unitree_g1_23dof_flat_tracking_env_cfg,
@@ -309,10 +310,18 @@ def run_sim(
         ):
           log[k] = np.stack(log[k], axis=0)
         np.savez(output_path, **log)  # type: ignore[arg-type]
+        print(f"[INFO]: Motion saved to {output_path}")
+
+        if render:
+          import mediapy as media
+
+          video_path = Path(output_path).with_suffix(".mp4")
+          media.write_video(str(video_path), frames, fps=output_fps)
+          print(f"[INFO]: Video saved to {video_path}")
 
 
 def main(
-  robot: str,
+  robot: Literal["g1", "g1_23dof"],
   input_file: str,
   output_name: str,
   input_fps: float = 30.0,
@@ -324,14 +333,19 @@ def main(
   """Replay motion from CSV file and output to npz file.
 
   Args:
+    robot: Robot model the motion is retargeted to.
     input_file: Path to the input CSV file.
-    output_name: Path to the output npz file.
+    output_name: File name of the output npz, saved under src/assets/motions/<robot>.
     input_fps: Frame rate of the CSV file.
     output_fps: Desired output frame rate.
     device: Device to use.
     render: Whether to render the simulation and save a video.
     line_range: Range of lines to process from the CSV file.
   """
+  if device.startswith("cuda") and not torch.cuda.is_available():
+    print("[WARNING]: CUDA is not available. Falling back to CPU. This may be slow.")
+    device = "cpu"
+
   sim_cfg = SimulationCfg()
   sim_cfg.mujoco.timestep = 1.0 / output_fps
   if robot == "g1":  # 29 Dof
@@ -367,7 +381,6 @@ def main(
       "right_wrist_pitch_joint",
       "right_wrist_yaw_joint",
     ]
-    output_dir = "./src/assets/motions/g1"
   elif robot == "g1_23dof":
     scene = Scene(unitree_g1_23dof_flat_tracking_env_cfg().scene, device=device)
     joint_names = [  # 23 Dof
@@ -395,7 +408,6 @@ def main(
       "right_elbow_joint",
       "right_wrist_roll_joint",
     ]
-    output_dir = "./src/assets/motions/g1_23dof"
   else:
     raise ValueError(f"Unsupported robot: {robot}")
 
@@ -411,6 +423,7 @@ def main(
       height=480,
       width=640,
       origin_type=ViewerConfig.OriginType.ASSET_ROOT,
+      entity_name="robot",
       distance=2.0,
       elevation=-5.0,
       azimuth=20,
@@ -421,10 +434,12 @@ def main(
       scene=scene,
     )
     renderer.initialize()
-  os.makedirs(output_dir, exist_ok=True)
+
+  output_dir = SRC_PATH / "assets" / "motions" / robot
+  output_dir.mkdir(parents=True, exist_ok=True)
   if not output_name.endswith(".npz"):
     output_name += ".npz"
-  output_path = os.path.join(output_dir, output_name)
+  output_path = str(output_dir / output_name)
 
   run_sim(
     sim=sim,

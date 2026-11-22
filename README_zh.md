@@ -80,7 +80,7 @@ python scripts/train.py Unitree-G1-Flat \
 
 #### 2.1 准备动作文件
 
-将准备好的 csv 格式的动作文件保存在 mjlab/motions/g1/ 目录下，执行下面的指令将其转为训练可用的 npz 文件：
+将准备好的 csv 格式的动作文件保存在 `src/assets/motions/g1/` 目录下，执行下面的指令将其转为训练可用的 npz 文件：
 
 ```bash
 python scripts/csv_to_npz.py \
@@ -91,7 +91,7 @@ python scripts/csv_to_npz.py \
 --robot g1 # g1 or g1_23dof
 ```
 
-**npz文件默认保存路径为**：`src/motions/g1/...`
+**npz文件默认保存路径为**：`src/assets/motions/g1/...`
 
 #### 2.2 训练
 
@@ -199,7 +199,7 @@ cmake .. && make -j8
 ./simulate/build/unitree_mujoco
 ```
 
-可在 `simulate/config` 中选择对应机器人
+可在 `simulate/config.yaml` 中选择对应机器人
 
 启动仿真控制程序：
 

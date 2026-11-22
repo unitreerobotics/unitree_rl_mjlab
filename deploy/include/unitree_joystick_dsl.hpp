@@ -5,7 +5,7 @@
  * interactions in a human-readable format. It supports logical expressions
  * combining button states with AND (+), OR (|), NOT (!), and parentheses.
  * Example expressions:
- * 
+ *
  * --- Basic ---
  * - "A"                  # A is pressed
  * - "A.on_pressed"       # A is just pressed (single frame trigger)
@@ -193,8 +193,8 @@ inline const KeyBase& GetKey(const UnitreeJoystick& joy, std::string_view name_s
 // Atom syntax: name [ '(' number ['s'|'sec'|'secs'] ')' ] [ '.' (pressed|on_pressed|on_released) ]
 class Parser {
  public:
-  explicit Parser(std::string expr) : lex_(expr) { 
-    tok_ = lex_.Next(); 
+  explicit Parser(std::string expr) : lex_(expr) {
+    tok_ = lex_.Next();
   }
   std::unique_ptr<Node> Parse() {
     auto n = ParseOr();

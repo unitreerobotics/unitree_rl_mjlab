@@ -67,7 +67,7 @@ public:
     }
 
     float step_dt;
-    
+
     YAML::Node cfg;
 
     std::unique_ptr<ObservationManager> observation_manager;

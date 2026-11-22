@@ -57,11 +57,11 @@ public:
             }
             std::cout << std::endl;
         };
-    
+
         printObjects("Link", mj_model_->nbody, mjOBJ_BODY, [](int i) { return i; });
         printObjects("Joint", mj_model_->njnt, mjOBJ_JOINT, [](int i) { return i; });
         printObjects("Actuator", mj_model_->nu, mjOBJ_ACTUATOR, [](int i) { return i; });
-    
+
         int sensorIndex = 0;
         printObjects("Sensor", mj_model_->nsensor, mjOBJ_SENSOR, [&](int i) {
             int currentIndex = sensorIndex;
@@ -94,34 +94,34 @@ protected:
     {
         num_motor_ = mj_model_->nu;
         dim_motor_sensor_ = MOTOR_SENSOR_NUM * num_motor_;
-    
+
         // Find sensor addresses by name
         int sensor_id = -1;
-        
+
         // IMU quaternion
         sensor_id = mj_name2id(mj_model_, mjOBJ_SENSOR, "imu_quat");
         if (sensor_id >= 0) {
             imu_quat_adr_ = mj_model_->sensor_adr[sensor_id];
         }
-        
+
         // IMU gyroscope
         sensor_id = mj_name2id(mj_model_, mjOBJ_SENSOR, "imu_gyro");
         if (sensor_id >= 0) {
             imu_gyro_adr_ = mj_model_->sensor_adr[sensor_id];
         }
-        
+
         // IMU accelerometer
         sensor_id = mj_name2id(mj_model_, mjOBJ_SENSOR, "imu_acc");
         if (sensor_id >= 0) {
             imu_acc_adr_ = mj_model_->sensor_adr[sensor_id];
         }
-        
+
         // Frame position
         sensor_id = mj_name2id(mj_model_, mjOBJ_SENSOR, "frame_pos");
         if (sensor_id >= 0) {
             frame_pos_adr_ = mj_model_->sensor_adr[sensor_id];
         }
-        
+
         // Frame velocity
         sensor_id = mj_name2id(mj_model_, mjOBJ_SENSOR, "frame_vel");
         if (sensor_id >= 0) {
@@ -193,7 +193,7 @@ public:
                 lowstate->msg_.motor_state()[i].dq() = mj_data_->sensordata[i + num_motor_];
                 lowstate->msg_.motor_state()[i].tau_est() = mj_data_->sensordata[i + 2 * num_motor_];
             }
-            
+
             if(imu_quat_adr_ >= 0) {
                 lowstate->msg_.imu_state().quaternion()[0] = mj_data_->sensordata[imu_quat_adr_ + 0];
                 lowstate->msg_.imu_state().quaternion()[1] = mj_data_->sensordata[imu_quat_adr_ + 1];
@@ -209,7 +209,7 @@ public:
                 lowstate->msg_.imu_state().rpy()[1] = asin(2 * (w * y - z * x));
                 lowstate->msg_.imu_state().rpy()[2] = atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
             }
-            
+
             if(imu_gyro_adr_ >= 0) {
                 lowstate->msg_.imu_state().gyroscope()[0] = mj_data_->sensordata[imu_gyro_adr_ + 0];
                 lowstate->msg_.imu_state().gyroscope()[1] = mj_data_->sensordata[imu_gyro_adr_ + 1];
@@ -221,7 +221,7 @@ public:
                 lowstate->msg_.imu_state().accelerometer()[1] = mj_data_->sensordata[imu_acc_adr_ + 1];
                 lowstate->msg_.imu_state().accelerometer()[2] = mj_data_->sensordata[imu_acc_adr_ + 2];
             }
-            
+
             lowstate->msg_.tick() = std::round(mj_data_->time / 1e-3);
             lowstate->unlockAndPublish();
         }
@@ -249,7 +249,7 @@ public:
     std::unique_ptr<WirelessController_t> wireless_controller;
     std::shared_ptr<LowCmd_t> lowcmd;
     std::unique_ptr<LowState_t> lowstate;
-    
+
 private:
     unitree::common::RecurrentThreadPtr thread_;
 };

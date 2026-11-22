@@ -43,20 +43,19 @@ int main(int argc, char** argv)
         spdlog::critical("Unmatched robot type.");
         exit(-1);
     }
-    
+
     // Initialize FSM
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
     fsm->start();
 
     std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
     std::cout << "And then press [R2 + A] to start controlling the robot.\n";
-    std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
+    std::cout << "And then press [R1 + A] to control the robot dance.\n";
 
     while (true)
     {
         sleep(1);
     }
-    
+
     return 0;
 }
-

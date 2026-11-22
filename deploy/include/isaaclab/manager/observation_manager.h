@@ -78,7 +78,7 @@ public:
                     auto term_obs_scaled = term.get(h);
                     obs.insert(obs.end(), term_obs_scaled.begin(), term_obs_scaled.end());
                 }
-            }            
+            }
         }
         else
         {
@@ -141,7 +141,7 @@ protected:
             if(!term_yaml_cfg["clip"].IsNull()) {
                 term_cfg.clip = term_yaml_cfg["clip"].as<std::vector<float>>();
             }
-            term_cfg.func = observations_map()[term_name];   
+            term_cfg.func = observations_map()[term_name];
 
 
             auto obs = term_cfg.func(this->env, term_cfg.params);

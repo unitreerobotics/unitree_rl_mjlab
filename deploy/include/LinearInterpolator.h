@@ -9,10 +9,10 @@
 inline std::vector<float> linear_interpolate(float t, const std::vector<float>& ts, const std::vector<std::vector<float>>& ys)
 {
     assert(ts.size() == ys.size() && !ys.empty() && ts.size() > 1 && ys[0].size() > 0);
-    
+
     if (t <= ts[0]) return ys[0];
     if (t >= ts[ts.size() - 1]) return ys[ts.size() - 1];
-    
+
     for (int i = 0; i < ts.size() - 1; ++i)
     {
         if (t >= ts[i] && t <= ts[i + 1])
@@ -26,6 +26,6 @@ inline std::vector<float> linear_interpolate(float t, const std::vector<float>& 
             return result;
         }
     }
-    
+
     return std::vector<float>(ys[0].size(), 0.0f); // Fallback, should not reach here
 }

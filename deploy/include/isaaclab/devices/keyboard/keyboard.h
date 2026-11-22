@@ -1,11 +1,15 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#include <atomic>
+#include <chrono>
 #include <deque>
+#include <iostream>
+#include <string>
+#include <sys/select.h>
 #include <termios.h>
-#include <unistd.h>
 #include <thread>
+#include <unistd.h>
+#include <vector>
 
 
 /**
@@ -26,8 +30,12 @@ public:
 
     _thread_running  = true;
     _readThread = std::thread([this] {
-      while (_running) {
-        _read();
+      while (_thread_running) {
+        if (_running) {
+          _read();
+        } else {
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
       }
     });
   }
@@ -35,6 +43,9 @@ public:
   ~Keyboard()
   {
     _thread_running = false;
+    if (_readThread.joinable()) {
+      _readThread.join();
+    }
     _pauseKey();
   }
 
@@ -50,22 +61,22 @@ public:
       on_pressed = false;
       on_released = false;
     }
-    
+
     _last_key = _key;
   }
 
   /**
    * @brief Get the current key value
-   * 
-   * @return std::string 
+   *
+   * @return std::string
    */
   std::string key() const { return _key; };
 
   /**
-   * @brief Get the String object from keyboard 
-   * 
+   * @brief Get the String object from keyboard
+   *
    * @param slogan Used to prompt the user for input
-   * @return std::string 
+   * @return std::string
    */
   std::string getString(std::string slogan)
   {
@@ -91,8 +102,8 @@ public:
   bool on_released = false;
 
   private:
-  bool _thread_running = false;
-  bool _running = false;
+  std::atomic<bool> _thread_running{false};
+  std::atomic<bool> _running{false};
   std::thread _readThread;
 
   void _read()
@@ -158,7 +169,7 @@ public:
   fd_set _fd_set;
   char _c = '\0';
   std::string _key, _last_key;
-  
+
   termios _oldSettings, _newSettings;
   timeval _tv;
 };

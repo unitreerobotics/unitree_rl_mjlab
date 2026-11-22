@@ -58,6 +58,12 @@ def terrain_levels_vel(
   )
   move_down *= ~move_up
 
+  # On the initial reset the robot is still at its spawn pose, so ``distance`` is
+  # meaningless. Freeze levels to respect ``max_init_terrain_level``.
+  if env.common_step_counter == 0:
+    move_up = torch.zeros_like(move_up)
+    move_down = torch.zeros_like(move_down)
+
   # Update terrain levels.
   terrain.update_env_origins(env_ids, move_up, move_down)
 
@@ -82,14 +88,7 @@ def commands_vel(
         cfg.ranges.lin_vel_y = stage["lin_vel_y"]
       if "ang_vel_z" in stage and stage["ang_vel_z"] is not None:
         cfg.ranges.ang_vel_z = stage["ang_vel_z"]
-  return {
-    # "lin_vel_x_min": torch.tensor(cfg.ranges.lin_vel_x[0]),
-    # "lin_vel_x_max": torch.tensor(cfg.ranges.lin_vel_x[1]),
-    # "lin_vel_y_min": torch.tensor(cfg.ranges.lin_vel_y[0]),
-    # "lin_vel_y_max": torch.tensor(cfg.ranges.lin_vel_y[1]),
-    # "ang_vel_z_min": torch.tensor(cfg.ranges.ang_vel_z[0]),
-    # "ang_vel_z_max": torch.tensor(cfg.ranges.ang_vel_z[1]),
-  }
+  return {}
 
 
 def reward_weight(

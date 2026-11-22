@@ -8,7 +8,7 @@ FSM:
       id: 3
       type: RLBase
   Passive:
-    transitions: 
+    transitions:
       FixStand: LT + up.on_pressed
     mode: [ # motor mode
       1,1,1,1,1,1,
@@ -25,7 +25,7 @@ FSM:
       2,2,2,2,2,2,2,
     ]
   FixStand:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed
       Velocity: RT + A.on_pressed
     kp: [
@@ -53,6 +53,6 @@ FSM:
       ]
     ]
   Velocity:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed
     policy_dir: config/policy/velocity

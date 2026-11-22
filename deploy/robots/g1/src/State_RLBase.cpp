@@ -32,7 +32,7 @@ REGISTER_OBSERVATION(keyboard_velocity_commands)
 }
 
 State_RLBase::State_RLBase(int state_mode, std::string state_string)
-: FSMState(state_mode, state_string) 
+: FSMState(state_mode, state_string)
 {
     auto cfg = param::config["FSM"][state_string];
     auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());

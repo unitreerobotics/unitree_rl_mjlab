@@ -83,7 +83,7 @@ Train a Unitree G1 to mimic reference motion sequences.
 
 #### 2.1 Prepare Motion Files
 
-Prepare csv motion files in mjlab/motions/g1/ and convert them to npz format:
+Prepare csv motion files in `src/assets/motions/g1/` and convert them to npz format:
 
 ```bash
 python scripts/csv_to_npz.py \
@@ -94,7 +94,7 @@ python scripts/csv_to_npz.py \
 --robot g1 # g1 or g1_23dof
 ```
 
-**npz files will be stored at:**：`src/motions/g1/...`
+**npz files will be stored at:** `src/assets/motions/g1/...`
 
 #### 2.2 Training
 
@@ -205,7 +205,7 @@ Launch the simulator (note that a gamepad must be connected):
 ./simulate/build/unitree_mujoco
 ```
 
-You can select the corresponding robot in `simulate/config`
+You can select the corresponding robot in `simulate/config.yaml`
 
 Launch the simulation control program:
 

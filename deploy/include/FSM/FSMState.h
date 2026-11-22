@@ -9,8 +9,8 @@
 class FSMState : public BaseState
 {
 public:
-    FSMState(int state, std::string state_string) 
-    : BaseState(state, state_string) 
+    FSMState(int state, std::string state_string)
+    : BaseState(state, state_string)
     {
         spdlog::info("Initializing State_{} ...", state_string);
 

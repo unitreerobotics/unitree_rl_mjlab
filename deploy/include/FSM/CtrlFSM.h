@@ -45,7 +45,7 @@ public:
         }
     }
 
-    void start() 
+    void start()
     {
         // Start From State_Passive
         currentState = states[0];
@@ -69,7 +69,7 @@ public:
 
         states.push_back(std::move(state));
     }
-    
+
     ~CtrlFSM()
     {
         states.clear();
@@ -84,7 +84,7 @@ private:
         currentState->pre_run();
         currentState->run();
         currentState->post_run();
-        
+
         // Check if need to change state
         int nextStateMode = 0;
         for(int i(0); i<currentState->registered_checks.size(); i++)

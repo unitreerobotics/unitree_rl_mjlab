@@ -21,7 +21,7 @@ struct ArticulationData
 
     // Joint positions of all joints.
     Eigen::VectorXf joint_pos;
-    
+
     // Default joint positions of all joints.
     Eigen::VectorXf default_joint_pos;
 

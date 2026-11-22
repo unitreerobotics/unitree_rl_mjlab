@@ -9,8 +9,8 @@
 class State_FixStand : public FSMState
 {
 public:
-    State_FixStand(int state, std::string state_string = "FixStand") 
-    : FSMState(state, state_string) 
+    State_FixStand(int state, std::string state_string = "FixStand")
+    : FSMState(state, state_string)
     {
         ts_ = param::config["FSM"]["FixStand"]["ts"].as<std::vector<float>>();
         qs_ = param::config["FSM"]["FixStand"]["qs"].as<std::vector<std::vector<float>>>();
@@ -44,7 +44,7 @@ public:
     {
         float t = (double)unitree::common::GetCurrentTimeMillisecond() * 1e-3 - t0_;
         auto q = linear_interpolate(t, ts_, qs_);
-        
+
         for(int i(0); i < q.size(); ++i) {
             lowcmd->msg_.motor_cmd()[i].q() = q[i];
         }

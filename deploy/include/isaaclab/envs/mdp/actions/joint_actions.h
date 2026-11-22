@@ -31,6 +31,7 @@ public:
         if(!cfg["offset"].IsNull()) {
             _offset = cfg["offset"].as<std::vector<float>>();
         }
+        _reset_processed_actions();
         if(!cfg["clip"].IsNull()) {
             _clip = cfg["clip"].as<std::vector<std::vector<float> >>();
         }
@@ -60,17 +61,17 @@ public:
     }
 
 
-    int action_dim() 
+    int action_dim()
     {
         return _action_dim;
     }
 
-    std::vector<float> raw_actions() 
+    std::vector<float> raw_actions()
     {
         return _raw_actions;
     }
-    
-    std::vector<float> processed_actions() 
+
+    std::vector<float> processed_actions()
     {
         return _processed_actions;
     }
@@ -78,9 +79,20 @@ public:
     void reset()
     {
         _raw_actions.assign(_action_dim, 0.0f);
+        _reset_processed_actions();
     }
 
 protected:
+    // Hold the default joint targets until the first policy step is available.
+    void _reset_processed_actions()
+    {
+        if(_offset.empty()) {
+            _processed_actions.assign(_action_dim, 0.0f);
+        } else {
+            _processed_actions = _offset;
+        }
+    }
+
     int _action_dim;
     std::vector<int> _joint_ids;
 

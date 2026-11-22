@@ -13,7 +13,7 @@ class State_RLBase : public FSMState
 {
 public:
     State_RLBase(int state_mode, std::string state_string);
-    
+
     void enter()
     {
         // set gain
@@ -51,7 +51,7 @@ public:
     }
 
     void run();
-    
+
     void exit()
     {
         policy_thread_running = false;

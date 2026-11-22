@@ -84,7 +84,7 @@ python -m pip check
 ```
 
 升级后，多 GPU 参数使用 `--gpu-ids '[0, 1]'`；元组参数同样使用 Python 语法，例如
-`--agent.actor.hidden-dims '(512, 256, 128)'`。兼容性测试见 [tests/README.md](../tests/README.md)。
+`--agent.actor.hidden-dims '(512, 256, 128)'`。
 
 G1 模仿任务现在使用仓库本地模型及其默认关节角；H2 速度任务使用 `H2_ACTION_SCALE`。
 这些修改会影响策略输入或动作含义，旧 checkpoint 应配合原训练配置验证；使用修正后的任务重新训练时，
