@@ -72,6 +72,12 @@ public:
 
     ~CtrlFSM()
     {
+        fsm_thread_.reset();
+        if (currentState)
+        {
+            currentState->exit();
+            currentState.reset();
+        }
         states.clear();
     }
 

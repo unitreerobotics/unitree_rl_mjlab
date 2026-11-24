@@ -15,6 +15,8 @@
 #ifndef __JOYSTICK_H__
 #define __JOYSTICK_H__
 
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <sys/types.h>
@@ -105,9 +107,12 @@ class Joystick
 {
 private:
   void openPath(std::string devicePath, bool blocking = false);
-  int _fd;
+  int _fd = -1;
 
 public:
+  static constexpr std::size_t kMaxButtons = 20;
+  static constexpr std::size_t kMaxAxes = 10;
+
   ~Joystick();
 
   /**
@@ -130,11 +135,13 @@ public:
    * Joystick objects cannot be copied
    */
   Joystick(Joystick const &) = delete;
+  Joystick &operator=(Joystick const &) = delete;
 
   /**
    * Joystick objects can be moved
    */
-  Joystick(Joystick &&) = default;
+  Joystick(Joystick &&other) noexcept;
+  Joystick &operator=(Joystick &&other) noexcept;
 
   /**
    * Initialises an instance for the joystick device specified and provide
@@ -154,9 +161,9 @@ public:
 
   void getState();
 
-  JoystickEvent event_;
-  int button_[20] = {0};
-  int axis_[10] = {0};
+  JoystickEvent event_{};
+  int button_[kMaxButtons] = {0};
+  int axis_[kMaxAxes] = {0};
 
   bool sample(JoystickEvent *event);
 };

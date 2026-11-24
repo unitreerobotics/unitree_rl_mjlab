@@ -18,6 +18,8 @@ public:
         FSMStringMap.insert({state, state_string});
     }
 
+    virtual ~BaseState() = default;
+
     virtual void enter() {}
 
     virtual void pre_run() {}

@@ -130,7 +130,7 @@ def run_train(
 
     if agent_cfg["logger"] == "wandb":
       agent_cfg["logger"] = {
-        "class_name": "src.utils.wandb_log_writer:UnitreeWandbLogWriter",
+        "class_name": "src.tasks.utils.wandb_log_writer:UnitreeWandbLogWriter",
         "project_name": agent_cfg["wandb_project"],
       }
     runner = runner_cls(env, agent_cfg, str(log_dir), device)

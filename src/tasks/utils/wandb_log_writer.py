@@ -20,6 +20,7 @@ class UnitreeWandbLogWriter(WandbLogWriter):
         entity=os.environ.get("WANDB_USERNAME"),
         name=Path(log_dir).name,
         config={"log_dir": log_dir},
+        settings=wandb.Settings(start_method="thread"),
       )
     except BaseException:
       self.close()

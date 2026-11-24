@@ -3,29 +3,35 @@
 
 #pragma once
 
-#include <vector>
 #include <cassert>
+#include <vector>
 
-inline std::vector<float> linear_interpolate(float t, const std::vector<float>& ts, const std::vector<std::vector<float>>& ys)
+inline std::vector<float> linear_interpolate(
+    float t,
+    const std::vector<float>& ts,
+    const std::vector<std::vector<float>>& ys)
 {
-    assert(ts.size() == ys.size() && !ys.empty() && ts.size() > 1 && ys[0].size() > 0);
+    assert(ts.size() == ys.size() && ts.size() > 1 && !ys[0].empty());
 
-    if (t <= ts[0]) return ys[0];
-    if (t >= ts[ts.size() - 1]) return ys[ts.size() - 1];
+    if (t <= ts.front()) return ys.front();
+    if (t >= ts.back()) return ys.back();
 
-    for (int i = 0; i < ts.size() - 1; ++i)
+    for (size_t i = 0; i + 1 < ts.size(); ++i)
     {
         if (t >= ts[i] && t <= ts[i + 1])
         {
-            float alpha = (t - ts[i]) / (ts[i + 1] - ts[i]);
+            const float denom = ts[i + 1] - ts[i];
+            if (denom == 0.0f) return ys[i + 1];
+
+            const float alpha = (t - ts[i]) / denom;
             std::vector<float> result(ys[i].size());
-            for (int j = 0; j < ys[i].size(); ++j)
+            for (size_t j = 0; j < ys[i].size(); ++j)
             {
-                result[j] = ys[i][j] * (1 - alpha) + ys[i + 1][j] * alpha;
+                result[j] = ys[i][j] * (1.0f - alpha) + ys[i + 1][j] * alpha;
             }
             return result;
         }
     }
 
-    return std::vector<float>(ys[0].size(), 0.0f); // Fallback, should not reach here
+    return ys.back();
 }

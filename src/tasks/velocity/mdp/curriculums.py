@@ -22,11 +22,6 @@ class VelocityStage(TypedDict):
   ang_vel_z: tuple[float, float] | None
 
 
-class RewardWeightStage(TypedDict):
-  step: int
-  weight: float
-
-
 def terrain_levels_vel(
   env: ManagerBasedRlEnv,
   env_ids: torch.Tensor,
@@ -81,7 +76,7 @@ def commands_vel(
   assert command_term is not None
   cfg = cast(UniformVelocityCommandCfg, command_term.cfg)
   for stage in velocity_stages:
-    if env.common_step_counter > stage["step"]:
+    if env.common_step_counter >= stage["step"]:
       if "lin_vel_x" in stage and stage["lin_vel_x"] is not None:
         cfg.ranges.lin_vel_x = stage["lin_vel_x"]
       if "lin_vel_y" in stage and stage["lin_vel_y"] is not None:
@@ -89,18 +84,3 @@ def commands_vel(
       if "ang_vel_z" in stage and stage["ang_vel_z"] is not None:
         cfg.ranges.ang_vel_z = stage["ang_vel_z"]
   return {}
-
-
-def reward_weight(
-  env: ManagerBasedRlEnv,
-  env_ids: torch.Tensor,
-  reward_name: str,
-  weight_stages: list[RewardWeightStage],
-) -> torch.Tensor:
-  """Update a reward term's weight based on training step stages."""
-  del env_ids  # Unused.
-  reward_term_cfg = env.reward_manager.get_term_cfg(reward_name)
-  for stage in weight_stages:
-    if env.common_step_counter > stage["step"]:
-      reward_term_cfg.weight = stage["weight"]
-  return torch.tensor([reward_term_cfg.weight])

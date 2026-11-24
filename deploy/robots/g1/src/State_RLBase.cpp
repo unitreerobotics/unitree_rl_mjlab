@@ -10,23 +10,27 @@ namespace isaaclab
 // change "velocity_commands" observation name in policy deploy.yaml to "keyboard_velocity_commands"
 REGISTER_OBSERVATION(keyboard_velocity_commands)
 {
-    std::string key = FSMState::keyboard->key();
-    static auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
-
-    static std::unordered_map<std::string, std::vector<float>> key_commands = {
-        {"w", {1.0f, 0.0f, 0.0f}},
-        {"s", {-1.0f, 0.0f, 0.0f}},
-        {"a", {0.0f, 1.0f, 0.0f}},
-        {"d", {0.0f, -1.0f, 0.0f}},
-        {"q", {0.0f, 0.0f, 1.0f}},
-        {"e", {0.0f, 0.0f, -1.0f}}
+    static const std::unordered_map<std::string, std::array<float, 3>> key_commands = {
+        {"w", { 1.0f,  0.0f,  0.0f}},
+        {"s", {-1.0f,  0.0f,  0.0f}},
+        {"a", { 0.0f,  1.0f,  0.0f}},
+        {"d", { 0.0f, -1.0f,  0.0f}},
+        {"q", { 0.0f,  0.0f,  1.0f}},
+        {"e", { 0.0f,  0.0f, -1.0f}},
     };
-    std::vector<float> cmd = {0.0f, 0.0f, 0.0f};
-    if (key_commands.find(key) != key_commands.end())
+
+    const auto it = key_commands.find(FSMState::keyboard->key());
+    if (it == key_commands.end())
     {
-        cmd = key_commands[key];
+        return {0.0f, 0.0f, 0.0f};
     }
-    return cmd;
+
+    const auto ranges = env->cfg["commands"]["base_velocity"]["ranges"];
+    return {
+        mdp::scale_velocity_axis(it->second[0], ranges["lin_vel_x"]),
+        mdp::scale_velocity_axis(it->second[1], ranges["lin_vel_y"]),
+        mdp::scale_velocity_axis(it->second[2], ranges["ang_vel_z"]),
+    };
 }
 
 }

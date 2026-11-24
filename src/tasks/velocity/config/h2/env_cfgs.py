@@ -6,12 +6,12 @@ from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
-from mjlab.tasks.velocity import mdp
-from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from src.assets.robots import (
   H2_ACTION_SCALE,
   get_h2_robot_cfg,
 )
+from src.tasks.velocity import mdp
+from src.tasks.velocity.mdp import UniformVelocityCommandCfg
 from src.tasks.velocity.velocity_env_cfg import (
   configure_foot_height_sensor,
   make_velocity_env_cfg,
@@ -77,7 +77,7 @@ def unitree_h2_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   twist_cmd = cfg.commands["twist"]
   assert isinstance(twist_cmd, UniformVelocityCommandCfg)
-  twist_cmd.viz.z_offset = 1.15
+  twist_cmd.viz.z_offset = 1.55
 
   cfg.observations["critic"].terms["foot_height"].params[
     "asset_cfg"
@@ -92,7 +92,7 @@ def unitree_h2_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # - Ankle roll is very tight for balance; ankle pitch looser for foot clearance.
   # - Waist roll/pitch stay tight to keep the torso upright and stable.
   # - Shoulders/elbows get moderate freedom for natural arm swing during walking.
-  # - Wrists are loose (0.3) since they don't affect balance much.
+  # - Wrists stay tight (0.1) to prevent unwanted arm oscillations.
   # Running values are ~1.5-2x walking values to accommodate larger motion range.
   cfg.rewards["pose"].params["std_standing"] = {".*": 0.05}
   cfg.rewards["pose"].params["std_walking"] = {
@@ -190,6 +190,7 @@ def unitree_h2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]
+  cfg.observations["critic"].terms["foot_height"].params.pop("sensor_name", None)
   cfg.rewards["foot_clearance"].params.pop("height_sensor_name", None)
 
   # Disable terrain curriculum (not present in play mode since rough clears all).

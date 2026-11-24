@@ -46,7 +46,7 @@ def track_angular_velocity(
   command_name: str,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-  """Reward heading error for heading-controlled envs, angular velocity for others.
+  """Reward tracking the commanded yaw angular velocity.
 
   The commanded xy angular velocities are assumed to be zero.
   """
@@ -131,37 +131,6 @@ def angular_momentum_penalty(
   return angmom_magnitude_sq
 
 
-def feet_air_time(
-  env: ManagerBasedRlEnv,
-  sensor_name: str,
-  threshold: float = 0.4,
-  command_name: str | None = None,
-  command_threshold: float = 0.1,
-) -> torch.Tensor:
-  """Reward feet air time."""
-  sensor: ContactSensor = env.scene[sensor_name]
-  sensor_data = sensor.data
-  air_time = sensor_data.current_air_time
-  contact_time = sensor_data.current_contact_time
-  in_contact = contact_time > 0.0
-  in_mode_time = torch.where(in_contact, contact_time, air_time)
-  single_stance = torch.mean(in_contact.float(), dim=1) == 0.5
-  mode_time = torch.min(
-    torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1
-  )[0]
-  error = torch.abs(mode_time - threshold)
-  reward = torch.clamp(threshold - error, min=0.0)
-  if command_name is not None:
-    command = env.command_manager.get_command(command_name)
-    if command is not None:
-      linear_norm = torch.norm(command[:, :2], dim=1)
-      angular_norm = torch.abs(command[:, 2])
-      total_command = linear_norm + angular_norm
-      scale = (total_command > command_threshold).float()
-      reward *= scale
-  return reward
-
-
 def feet_clearance(
   env: ManagerBasedRlEnv,
   target_height: float,
@@ -221,58 +190,6 @@ def feet_gait(
       scale = (total_command > command_threshold).float()
       reward *= scale
   return reward
-
-
-class feet_swing_height:
-  """Penalize deviation from target swing height, evaluated at landing."""
-
-  def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
-    self.sensor_name = cfg.params["sensor_name"]
-    self.site_names = cfg.params["asset_cfg"].site_names
-    self.peak_heights = torch.zeros(
-      (env.num_envs, len(self.site_names)), device=env.device, dtype=torch.float32
-    )
-    self.step_dt = env.step_dt
-
-  def __call__(
-    self,
-    env: ManagerBasedRlEnv,
-    sensor_name: str,
-    target_height: float,
-    command_name: str,
-    command_threshold: float,
-    asset_cfg: SceneEntityCfg,
-  ) -> torch.Tensor:
-    asset: Entity = env.scene[asset_cfg.name]
-    contact_sensor: ContactSensor = env.scene[sensor_name]
-    command = env.command_manager.get_command(command_name)
-    assert command is not None
-    foot_heights = asset.data.site_pos_w[:, asset_cfg.site_ids, 2]
-    in_air = contact_sensor.data.found == 0
-    self.peak_heights = torch.where(
-      in_air,
-      torch.maximum(self.peak_heights, foot_heights),
-      self.peak_heights,
-    )
-    first_contact = contact_sensor.compute_first_contact(dt=self.step_dt)
-    linear_norm = torch.norm(command[:, :2], dim=1)
-    angular_norm = torch.abs(command[:, 2])
-    total_command = linear_norm + angular_norm
-    active = (total_command > command_threshold).float()
-    error = self.peak_heights / target_height - 1.0
-    cost = torch.sum(torch.square(error) * first_contact.float(), dim=1) * active
-    num_landings = torch.sum(first_contact.float())
-    peak_heights_at_landing = self.peak_heights * first_contact.float()
-    mean_peak_height = torch.sum(peak_heights_at_landing) / torch.clamp(
-      num_landings, min=1
-    )
-    env.extras["log"]["Metrics/peak_height_mean"] = mean_peak_height
-    self.peak_heights = torch.where(
-      first_contact,
-      torch.zeros_like(self.peak_heights),
-      self.peak_heights,
-    )
-    return cost
 
 
 def feet_slip(

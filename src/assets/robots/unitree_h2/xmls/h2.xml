@@ -266,6 +266,6 @@
     <gyro site="imu" name="imu_ang_vel"/>
     <velocimeter site="imu" name="imu_lin_vel"/>
     <accelerometer site="imu" name="imu_lin_acc"/>
-    <subtreeangmom body="torso_link" name="root_angmom"/>
+    <subtreeangmom body="pelvis" name="root_angmom"/>
   </sensor>
 </mujoco>

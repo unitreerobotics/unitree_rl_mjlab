@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// !!! hack code: make glfw_adapter.window_ public
-#define private public
 #include "glfw_adapter.h"
-#undef private
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <mujoco/mujoco.h>
 #include "simulate.h"
@@ -56,13 +57,18 @@ class ElasticBand
 {
 public:
   ElasticBand(){};
-  void Advance(std::vector<double> x, std::vector<double> dx)
+  void Advance(const std::vector<double> &x, const std::vector<double> &dx)
   {
     std::vector<double> delta_x = {0.0, 0.0, 0.0};
     delta_x[0] = point_[0] - x[0];
     delta_x[1] = point_[1] - x[1];
     delta_x[2] = point_[2] - x[2];
-    double distance = sqrt(delta_x[0] * delta_x[0] + delta_x[1] * delta_x[1] + delta_x[2] * delta_x[2]);
+    double distance = std::sqrt(delta_x[0] * delta_x[0] + delta_x[1] * delta_x[1] + delta_x[2] * delta_x[2]);
+    if (distance <= 1e-6)
+    {
+      f_ = {0.0, 0.0, 0.0};
+      return;
+    }
 
     std::vector<double> direction = {0.0, 0.0, 0.0};
     direction[0] = delta_x[0] / distance;
@@ -70,18 +76,19 @@ public:
     direction[2] = delta_x[2] / distance;
 
     double v = dx[0] * direction[0] + dx[1] * direction[1] + dx[2] * direction[2];
+    double target_length = length_.load();
 
-    f_[0] = (stiffness_ * (distance - length_) - damping_ * v) * direction[0];
-    f_[1] = (stiffness_ * (distance - length_) - damping_ * v) * direction[1];
-    f_[2] = (stiffness_ * (distance - length_) - damping_ * v) * direction[2];
+    f_[0] = (stiffness_ * (distance - target_length) - damping_ * v) * direction[0];
+    f_[1] = (stiffness_ * (distance - target_length) - damping_ * v) * direction[1];
+    f_[2] = (stiffness_ * (distance - target_length) - damping_ * v) * direction[2];
   }
 
 
   double stiffness_ = 200;
   double damping_ = 100;
   std::vector<double> point_ = {0, 0, 3};
-  double length_ = 0.0;
-  bool enable_ = true;
+  std::atomic<double> length_{0.0};
+  std::atomic<bool> enable_{true};
   std::vector<double> f_ = {0, 0, 0};
 };
 inline ElasticBand elastic_band;
@@ -100,14 +107,34 @@ namespace
   // model and data
   mjModel *m = nullptr;
   mjData *d = nullptr;
+  std::atomic<bool> model_ready{false};
+  std::mutex bridge_mtx;
+  UnitreeSDK2BridgeBase *g_bridge = nullptr;
+  mj::Simulate *g_sim = nullptr;
+  GLFWkeyfun prev_key_cb = nullptr;
+
+  void UpdateBandAttachedLink(const mjModel *model)
+  {
+    int body_id = mj_name2id(model, mjOBJ_BODY, "torso_link");
+    if (body_id < 0)
+    {
+      body_id = mj_name2id(model, mjOBJ_BODY, "base_link");
+    }
+    param::config.band_attached_link.store(body_id >= 0 ? 6 * body_id : -1);
+  }
 
   // Update before every physics step, including steps taken after re-sync.
   void ApplyElasticBand(mjData *data)
   {
     if (param::config.enable_elastic_band == 1)
     {
-      auto *force = data->xfrc_applied + param::config.band_attached_link;
-      if (elastic_band.enable_)
+      int attached = param::config.band_attached_link.load();
+      if (attached < 0)
+      {
+        return;
+      }
+      auto *force = data->xfrc_applied + attached;
+      if (elastic_band.enable_.load())
       {
         std::vector<double> x = {data->qpos[0], data->qpos[1], data->qpos[2]};
         std::vector<double> dx = {data->qvel[0], data->qvel[1], data->qvel[2]};
@@ -202,13 +229,8 @@ namespace
           return "";
         }
 
-        std::size_t written = readlink(path, realpath.get(), buf_size);
-        if (written < buf_size)
-        {
-          realpath.get()[written] = '\0';
-          success = true;
-        }
-        else if (written == -1)
+        ssize_t written = readlink(path, realpath.get(), buf_size);
+        if (written < 0)
         {
           if (errno == EINVAL)
           {
@@ -218,6 +240,11 @@ namespace
 
           std::cerr << "error while resolving executable path: " << strerror(errno) << '\n';
           return "";
+        }
+        else if (static_cast<std::uint32_t>(written) < buf_size)
+        {
+          realpath.get()[written] = '\0';
+          success = true;
         }
         else
         {
@@ -356,6 +383,43 @@ namespace
     // UnitreeDds ud(d);
 
     // run until asked to exit
+    auto applyLoadedModel = [&](mjModel *mnew, const char *filename)
+    {
+      mjData *dnew = mnew ? mj_makeData(mnew) : nullptr;
+      if (!dnew)
+      {
+        if (mnew)
+        {
+          mj_deleteModel(mnew);
+        }
+        sim.LoadMessageClear();
+        return;
+      }
+
+      const std::unique_lock<std::recursive_mutex> lock(sim.mtx);
+      sim.Load(mnew, dnew, filename);
+
+      mj_deleteData(d);
+      mj_deleteModel(m);
+
+      m = mnew;
+      d = dnew;
+      mj_forward(m, d);
+      UpdateBandAttachedLink(m);
+      {
+        std::lock_guard<std::mutex> bridge_lock(bridge_mtx);
+        if (g_bridge)
+        {
+          g_bridge->setModelData(m, d);
+        }
+      }
+      model_ready.store(true);
+
+      free(ctrlnoise);
+      ctrlnoise = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * m->nu));
+      mju_zero(ctrlnoise, m->nu);
+    };
+
     while (!sim.exitrequest.load())
     {
       if (sim.droploadrequest.load())
@@ -363,30 +427,7 @@ namespace
         sim.LoadMessage(sim.dropfilename);
         mjModel *mnew = LoadModel(sim.dropfilename, sim);
         sim.droploadrequest.store(false);
-
-        mjData *dnew = nullptr;
-        if (mnew)
-          dnew = mj_makeData(mnew);
-        if (dnew)
-        {
-          sim.Load(mnew, dnew, sim.dropfilename);
-
-          mj_deleteData(d);
-          mj_deleteModel(m);
-
-          m = mnew;
-          d = dnew;
-          mj_forward(m, d);
-
-          // allocate ctrlnoise
-          free(ctrlnoise);
-          ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * m->nu);
-          mju_zero(ctrlnoise, m->nu);
-        }
-        else
-        {
-          sim.LoadMessageClear();
-        }
+        applyLoadedModel(mnew, sim.dropfilename);
       }
 
       if (sim.uiloadrequest.load())
@@ -394,29 +435,7 @@ namespace
         sim.uiloadrequest.fetch_sub(1);
         sim.LoadMessage(sim.filename);
         mjModel *mnew = LoadModel(sim.filename, sim);
-        mjData *dnew = nullptr;
-        if (mnew)
-          dnew = mj_makeData(mnew);
-        if (dnew)
-        {
-          sim.Load(mnew, dnew, sim.filename);
-
-          mj_deleteData(d);
-          mj_deleteModel(m);
-
-          m = mnew;
-          d = dnew;
-          mj_forward(m, d);
-
-          // allocate ctrlnoise
-          free(ctrlnoise);
-          ctrlnoise = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * m->nu));
-          mju_zero(ctrlnoise, m->nu);
-        }
-        else
-        {
-          sim.LoadMessageClear();
-        }
+        applyLoadedModel(mnew, sim.filename);
       }
 
       // sleep for 1 ms or yield, to let main thread run
@@ -549,69 +568,85 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
   if (filename != nullptr)
   {
     sim->LoadMessage(filename);
-    m = LoadModel(filename, *sim);
-    if (m)
-      d = mj_makeData(m);
-    if (d)
+    mjModel *mnew = LoadModel(filename, *sim);
+    mjData *dnew = nullptr;
+    if (mnew)
+      dnew = mj_makeData(mnew);
+    if (dnew)
     {
+      const std::unique_lock<std::recursive_mutex> lock(sim->mtx);
+      m = mnew;
+      d = dnew;
       sim->Load(m, d, filename);
       mj_forward(m, d);
+      UpdateBandAttachedLink(m);
 
       // allocate ctrlnoise
       free(ctrlnoise);
       ctrlnoise = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * m->nu));
       mju_zero(ctrlnoise, m->nu);
+      model_ready.store(true);
     }
     else
     {
+      if (mnew)
+        mj_deleteModel(mnew);
       sim->LoadMessageClear();
     }
   }
 
   PhysicsLoop(*sim);
-
-  // delete everything we allocated
-  free(ctrlnoise);
-  mj_deleteData(d);
-  mj_deleteModel(m);
-
-  exit(0);
 }
 
-void *UnitreeSdk2BridgeThread(void *arg)
+void UnitreeSdk2BridgeThread(mj::Simulate *sim)
 {
   // Wait for mujoco data
-  while (true)
+  while (!sim->exitrequest.load())
   {
-    if (d)
+    if (model_ready.load())
     {
       std::cout << "Mujoco data is prepared" << std::endl;
       break;
     }
-    usleep(500000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  if (sim->exitrequest.load())
+  {
+    return;
   }
 
   unitree::robot::ChannelFactory::Instance()->Init(param::config.domain_id, param::config.interface);
 
-
-  int body_id = mj_name2id(m, mjOBJ_BODY, "torso_link");
-  if (body_id < 0) {
-    body_id = mj_name2id(m, mjOBJ_BODY, "base_link");
-  }
-  param::config.band_attached_link = 6 * body_id;
-
   std::unique_ptr<UnitreeSDK2BridgeBase> interface = nullptr;
-  if (m->nu > NUM_MOTOR_IDL_GO) {
-    interface = std::make_unique<G1Bridge>(m, d);
-  } else {
-    interface = std::make_unique<Go2Bridge>(m, d);
+  {
+    const std::unique_lock<std::recursive_mutex> lock(sim->mtx);
+    if (m->nu > NUM_MOTOR_IDL_GO)
+    {
+      interface = std::make_unique<G1Bridge>(m, d, &sim->mtx);
+    }
+    else
+    {
+      interface = std::make_unique<Go2Bridge>(m, d, &sim->mtx);
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> bridge_lock(bridge_mtx);
+    g_bridge = interface.get();
   }
   interface->start();
 
-  while (true)
+  while (!sim->exitrequest.load())
   {
-    sleep(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  {
+    std::lock_guard<std::mutex> bridge_lock(bridge_mtx);
+    g_bridge = nullptr;
+  }
+  interface->stop();
 }
 //------------------------------------------ main --------------------------------------------------
 
@@ -626,22 +661,43 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 #endif
 
 // user keyboard callback
-void user_key_cb(GLFWwindow* window, int key, int scancode, int act, int mods) {
-  if (act==GLFW_PRESS)
+void user_key_cb(GLFWwindow *window, int key, int scancode, int act, int mods)
+{
+  bool handled = false;
+  if (act == GLFW_PRESS)
   {
-    if(param::config.enable_elastic_band == 1) {
-      if (key==GLFW_KEY_9) {
-        elastic_band.enable_ = !elastic_band.enable_;
-      } else if (key==GLFW_KEY_7 || key==GLFW_KEY_UP) {
-        elastic_band.length_ -= 0.1;
-      } else if (key==GLFW_KEY_8 || key==GLFW_KEY_DOWN) {
-        elastic_band.length_ += 0.1;
+    if (param::config.enable_elastic_band == 1)
+    {
+      if (key == GLFW_KEY_9)
+      {
+        elastic_band.enable_.store(!elastic_band.enable_.load());
+        handled = true;
+      }
+      else if (key == GLFW_KEY_7 || key == GLFW_KEY_UP)
+      {
+        elastic_band.length_.store(std::max(0.0, elastic_band.length_.load() - 0.1));
+        handled = true;
+      }
+      else if (key == GLFW_KEY_8 || key == GLFW_KEY_DOWN)
+      {
+        elastic_band.length_.store(elastic_band.length_.load() + 0.1);
+        handled = true;
       }
     }
-    if(key==GLFW_KEY_BACKSPACE) {
-      mj_resetData(m, d);
-      mj_forward(m, d);
+    if (key == GLFW_KEY_BACKSPACE)
+    {
+      const std::unique_lock<std::recursive_mutex> lock(g_sim->mtx);
+      if (m)
+      {
+        mj_resetData(m, d);
+        mj_forward(m, d);
+      }
+      handled = true;
     }
+  }
+  if (!handled && prev_key_cb)
+  {
+    prev_key_cb(window, key, scancode, act, mods);
   }
 }
 
@@ -681,7 +737,8 @@ int main(int argc, char **argv)
   std::filesystem::path proj_dir = std::filesystem::path(getExecutableDir()).parent_path();
   param::config.load_from_yaml(proj_dir / "config.yaml");
   param::helper(argc, argv);
-  if(param::config.robot_scene.is_relative()) {
+  if (param::config.robot_scene.is_relative())
+  {
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
   }
 
@@ -689,16 +746,34 @@ int main(int argc, char **argv)
   auto sim = std::make_unique<mj::Simulate>(
     std::make_unique<mj::GlfwAdapter>(),
     &cam, &opt, &pert, /* is_passive = */ false);
+  g_sim = sim.get();
 
-  std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
+  std::thread unitree_thread(UnitreeSdk2BridgeThread, sim.get());
 
   // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), param::config.robot_scene.c_str());
   // start simulation UI loop (blocking call)
-  glfwSetKeyCallback(static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window_,user_key_cb);
+  prev_key_cb = glfwSetKeyCallback(static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window(), user_key_cb);
   sim->RenderLoop();
-  physicsthreadhandle.join();
 
-  pthread_exit(NULL);
+  // ensure background threads stop cleanly before deleting MuJoCo model/data
+  sim->exitrequest.store(1);
+  if (unitree_thread.joinable())
+  {
+    unitree_thread.join();
+  }
+  if (physicsthreadhandle.joinable())
+  {
+    physicsthreadhandle.join();
+  }
+
+  free(ctrlnoise);
+  ctrlnoise = nullptr;
+  mj_deleteData(d);
+  d = nullptr;
+  mj_deleteModel(m);
+  m = nullptr;
+  g_sim = nullptr;
+
   return 0;
 }

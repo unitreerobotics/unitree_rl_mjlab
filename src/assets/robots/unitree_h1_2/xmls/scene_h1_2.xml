@@ -295,16 +295,16 @@
     <jointactuatorfrc name="left_knee_torque" joint="left_knee_joint" />
     <jointactuatorfrc name="left_ankle_pitch_torque" joint="left_ankle_pitch_joint" />
     <jointactuatorfrc name="left_ankle_roll_torque" joint="left_ankle_roll_joint" />
+    <jointactuatorfrc name="right_hip_yaw_torque" joint="right_hip_yaw_joint" />
     <jointactuatorfrc name="right_hip_pitch_torque" joint="right_hip_pitch_joint" />
     <jointactuatorfrc name="right_hip_roll_torque" joint="right_hip_roll_joint" />
-    <jointactuatorfrc name="right_hip_yaw_torque" joint="right_hip_yaw_joint" />
     <jointactuatorfrc name="right_knee_torque" joint="right_knee_joint" />
     <jointactuatorfrc name="right_ankle_pitch_torque" joint="right_ankle_pitch_joint" />
     <jointactuatorfrc name="right_ankle_roll_torque" joint="right_ankle_roll_joint" />
     <jointactuatorfrc name="torso_joint_torque" joint="torso_joint" />
-    <jointactuatorfrc name="left_shoulder_yaw_torque" joint="left_shoulder_yaw_joint" />
     <jointactuatorfrc name="left_shoulder_pitch_torque" joint="left_shoulder_pitch_joint" />
     <jointactuatorfrc name="left_shoulder_roll_torque" joint="left_shoulder_roll_joint" />
+    <jointactuatorfrc name="left_shoulder_yaw_torque" joint="left_shoulder_yaw_joint" />
     <jointactuatorfrc name="left_elbow_torque" joint="left_elbow_joint" />
     <jointactuatorfrc name="left_wrist_roll_torque" joint="left_wrist_roll_joint" />
     <jointactuatorfrc name="left_wrist_pitch_torque" joint="left_wrist_pitch_joint" />

@@ -45,6 +45,7 @@ class Articulation
 {
 public:
     Articulation(){}
+    virtual ~Articulation() = default;
 
     virtual void update(){};
 

@@ -1,23 +1,38 @@
 #pragma once
 
+#include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <unitree/dds_wrapper/common/unitree_joystick.hpp>
 #include "joystick/joystick.h"
-#include <memory>
 
 
-class XBoxJoystick : public unitree::common::UnitreeJoystick
+class PhysicsJoystickBase : public unitree::common::UnitreeJoystick
 {
 public:
-    XBoxJoystick(std::string device, int bits = 15)
+    PhysicsJoystickBase(const std::string& device, int bits)
     : unitree::common::UnitreeJoystick()
     {
         js_ = std::make_unique<Joystick>(device);
-        if(!js_->isFound()) {
-            std::cout << "Error: Joystick open failed." << std::endl;
-            exit(1);
+        if (!js_->isFound()) {
+            std::cerr << "Error: Joystick device '" << device << "' open failed." << std::endl;
+            exit(EXIT_FAILURE);
         }
         max_value_ = 1 << (bits - 1);
+    }
+
+protected:
+    std::unique_ptr<Joystick> js_;
+    int max_value_;
+};
+
+
+class XBoxJoystick : public PhysicsJoystickBase
+{
+public:
+    XBoxJoystick(const std::string& device, int bits = 15)
+    : PhysicsJoystickBase(device, bits)
+    {
     }
 
     void update() override
@@ -42,24 +57,15 @@ public:
         rx(double(js_->axis_[3]) / max_value_);
         ry(-double(js_->axis_[4]) / max_value_);
     }
-private:
-    std::unique_ptr<Joystick> js_;
-    int max_value_;
 };
 
 
-class SwitchJoystick : public unitree::common::UnitreeJoystick
+class SwitchJoystick : public PhysicsJoystickBase
 {
 public:
-    SwitchJoystick(std::string device, int bits = 15)
-    : unitree::common::UnitreeJoystick()
+    SwitchJoystick(const std::string& device, int bits = 15)
+    : PhysicsJoystickBase(device, bits)
     {
-        js_ = std::make_unique<Joystick>(device);
-        if(!js_->isFound()) {
-            std::cout << "Error: Joystick open failed." << std::endl;
-            exit(1);
-        }
-        max_value_ = 1 << (bits - 1);
     }
 
     void update() override
@@ -84,7 +90,4 @@ public:
         rx(double(js_->axis_[2]) / max_value_);
         ry(-double(js_->axis_[3]) / max_value_);
     }
-private:
-    std::unique_ptr<Joystick> js_;
-    int max_value_;
 };

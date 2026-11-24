@@ -12,6 +12,8 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
     set(ONNXRUNTIME_DIR "${PROJECT_SOURCE_DIR}/../../thirdparty/onnxruntime-linux-x64-1.22.0")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     set(ONNXRUNTIME_DIR "${PROJECT_SOURCE_DIR}/../../thirdparty/onnxruntime-linux-aarch64-1.22.0")
+else()
+    message(FATAL_ERROR "Unsupported processor architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
 include_directories(

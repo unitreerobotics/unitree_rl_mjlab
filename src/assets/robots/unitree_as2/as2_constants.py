@@ -54,7 +54,7 @@ AS2_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
 
 
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.4),
+  pos=(0.0, 0.0, 0.32),
   joint_pos={
     ".*thigh_joint": 0.9,
     ".*calf_joint": -1.8,

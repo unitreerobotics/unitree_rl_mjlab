@@ -14,6 +14,7 @@ __pycache__/
 # IDE and local run outputs
 .idea
 .codex/
+skills
 outputs
 logs
 wandb

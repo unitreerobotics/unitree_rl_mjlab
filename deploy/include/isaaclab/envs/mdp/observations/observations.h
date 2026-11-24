@@ -108,46 +108,65 @@ REGISTER_OBSERVATION(last_action)
     return std::vector<float>(data.data(), data.data() + data.size());
 };
 
+inline float scale_velocity_axis(float value, const YAML::Node& range)
+{
+    const float clamped = std::clamp(value, -1.0f, 1.0f);
+    return clamped >= 0.0f
+        ? clamped * range[1].as<float>()
+        : -clamped * range[0].as<float>();
+}
+
+inline bool uses_keyboard_velocity(const YAML::Node& obs_cfg)
+{
+    if (obs_cfg["keyboard_velocity_commands"])
+    {
+        return true;
+    }
+    for (auto it = obs_cfg.begin(); it != obs_cfg.end(); ++it)
+    {
+        if (it->second.IsMap() && it->second["keyboard_velocity_commands"])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 REGISTER_OBSERVATION(velocity_commands)
 {
-    std::vector<float> obs(3);
-    auto & joystick = env->robot->data.joystick;
+    auto& joystick = env->robot->data.joystick;
+    const auto ranges = env->cfg["commands"]["base_velocity"]["ranges"];
+    std::vector<float> obs = {
+        scale_velocity_axis(joystick->ly(), ranges["lin_vel_x"]),
+        scale_velocity_axis(-joystick->lx(), ranges["lin_vel_y"]),
+        scale_velocity_axis(-joystick->rx(), ranges["ang_vel_z"]),
+    };
 
-    const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
-
-    obs[0] = std::clamp(joystick->ly(), cfg["lin_vel_x"][0].as<float>(), cfg["lin_vel_x"][1].as<float>());
-    obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
-    obs[2] = std::clamp(-joystick->rx(), cfg["ang_vel_z"][0].as<float>(), cfg["ang_vel_z"][1].as<float>());
-
+    if (std::hypot(obs[0], obs[1]) + std::abs(obs[2]) <= 0.1f)
+    {
+        return {0.0f, 0.0f, 0.0f};
+    }
     return obs;
 }
 
 REGISTER_OBSERVATION(gait_phase)
 {
-    float period = params["period"].as<float>();
-    float delta_phase = env->step_dt * (1.0f / period);
+    const float period = params["period"].as<float>();
+    const float t = static_cast<float>(env->episode_length.load()) * env->step_dt;
+    const float phase = std::fmod(t, period) / period;
+    env->global_phase = phase;
 
-    env->global_phase += delta_phase;
-    env->global_phase = std::fmod(env->global_phase, 1.0f);
+    const auto cmd = uses_keyboard_velocity(env->cfg["observations"])
+        ? observations_map().at("keyboard_velocity_commands")(env, params)
+        : isaaclab::mdp::velocity_commands(env, params);
 
-    auto cmd = isaaclab::mdp::velocity_commands(env, params);
-    float cmd_norm = std::sqrt(
-        cmd[0] * cmd[0] +
-        cmd[1] * cmd[1] +
-        cmd[2] * cmd[2]
-    );
-
-    std::vector<float> obs(2);
-    obs[0] = std::sin(env->global_phase * 2 * M_PI);
-    obs[1] = std::cos(env->global_phase * 2 * M_PI);
-
-    if (cmd_norm < 0.1f)
+    if (std::hypot(cmd[0], cmd[1]) + std::abs(cmd[2]) <= 0.1f)
     {
-        obs[0] = 0.0f;
-        obs[1] = 0.0f;
+        return {0.0f, 0.0f};
     }
 
-    return obs;
+    const float angle = phase * 2.0f * static_cast<float>(M_PI);
+    return {std::sin(angle), std::cos(angle)};
 }
 
 }

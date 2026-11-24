@@ -36,6 +36,31 @@ Joystick::Joystick(std::string devicePath, bool blocking)
   openPath(devicePath, blocking);
 }
 
+Joystick::Joystick(Joystick &&other) noexcept
+  : _fd(other._fd), event_(other.event_)
+{
+  std::copy(std::begin(other.button_), std::end(other.button_), std::begin(button_));
+  std::copy(std::begin(other.axis_), std::end(other.axis_), std::begin(axis_));
+  other._fd = -1;
+}
+
+Joystick &Joystick::operator=(Joystick &&other) noexcept
+{
+  if (this != &other)
+  {
+    if (_fd >= 0)
+    {
+      close(_fd);
+    }
+    _fd = other._fd;
+    event_ = other.event_;
+    std::copy(std::begin(other.button_), std::end(other.button_), std::begin(button_));
+    std::copy(std::begin(other.axis_), std::end(other.axis_), std::begin(axis_));
+    other._fd = -1;
+  }
+  return *this;
+}
+
 void Joystick::openPath(std::string devicePath, bool blocking)
 {
   // Open the device using either blocking or non-blocking
@@ -44,14 +69,14 @@ void Joystick::openPath(std::string devicePath, bool blocking)
 
 bool Joystick::sample(JoystickEvent *event)
 {
-  int bytes = read(_fd, event, sizeof(*event));
+  ssize_t bytes = read(_fd, event, sizeof(*event));
 
   if (bytes == -1)
     return false;
 
   // NOTE if this condition is not met, we're probably out of sync and this
   // Joystick instance is likely unusable
-  return bytes == sizeof(*event);
+  return bytes == static_cast<ssize_t>(sizeof(*event));
 }
 
 bool Joystick::isFound()
@@ -61,22 +86,32 @@ bool Joystick::isFound()
 
 void Joystick::getState()
 {
-  if (sample(&event_))
+  while (sample(&event_))
   {
     if (event_.isButton())
     {
-      button_[event_.number] = event_.value;
+      if (event_.number < kMaxButtons)
+      {
+        button_[event_.number] = event_.value;
+      }
     }
     else if (event_.isAxis())
     {
-      axis_[event_.number] = event_.value;
+      if (event_.number < kMaxAxes)
+      {
+        axis_[event_.number] = event_.value;
+      }
     }
   }
 }
 
 Joystick::~Joystick()
 {
-  close(_fd);
+  if (_fd >= 0)
+  {
+    close(_fd);
+    _fd = -1;
+  }
 }
 
 std::ostream &operator<<(std::ostream &os, const JoystickEvent &e)

@@ -53,13 +53,14 @@ public:
         );
     }
 
-    void pre_run()
+    void pre_run() override
     {
         lowstate->update();
         if(keyboard) keyboard->update();
+        lowcmd->lock();
     }
 
-    void post_run()
+    void post_run() override
     {
         lowcmd->unlockAndPublish();
     }

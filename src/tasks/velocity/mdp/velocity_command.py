@@ -20,7 +20,9 @@ class UniformVelocityCommand(MjlabUniformVelocityCommand):
 
   def _resample_command(self, env_ids: torch.Tensor) -> None:
     super()._resample_command(env_ids)
-    active = (torch.norm(self.vel_command_b[env_ids], dim=1) > 0.1).unsqueeze(1)
+    cmd = self.vel_command_b[env_ids]
+    total_command = torch.norm(cmd[:, :2], dim=1) + torch.abs(cmd[:, 2])
+    active = (total_command > 0.1).unsqueeze(1)
     self.vel_command_b[env_ids] *= active
     self.vel_command_w[env_ids] *= active
 

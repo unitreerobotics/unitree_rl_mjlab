@@ -236,8 +236,8 @@
     <motor name="right_hip_roll" joint="right_hip_roll_joint" ctrlrange="-139 139" />
     <motor name="right_hip_yaw" joint="right_hip_yaw_joint" ctrlrange="-88 88" />
     <motor name="right_knee" joint="right_knee_joint" ctrlrange="-139 139" />
-    <motor name="right_ankle_pitch" joint="right_ankle_pitch_joint" ctrlrange="-25 25" />
-    <motor name="right_ankle_roll" joint="right_ankle_roll_joint" ctrlrange="-25 25" />
+    <motor name="right_ankle_pitch" joint="right_ankle_pitch_joint" ctrlrange="-50 50" />
+    <motor name="right_ankle_roll" joint="right_ankle_roll_joint" ctrlrange="-50 50" />
     <motor name="waist_yaw" joint="waist_yaw_joint" ctrlrange="-88 88" />
     <motor name="waist_roll" joint="waist_roll_joint" ctrlrange="-50 50" />
     <motor name="waist_pitch" joint="waist_pitch_joint" ctrlrange="-50 50" />

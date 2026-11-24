@@ -1,24 +1,19 @@
 """Unitree A2 velocity environment configurations."""
 
-from typing import Literal
-
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
-from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import TerminationTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
-from mjlab.tasks.velocity import mdp
-from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from src.assets.robots import (
   get_a2_robot_cfg,
 )
+from src.tasks.velocity import mdp
+from src.tasks.velocity.mdp import UniformVelocityCommandCfg
 from src.tasks.velocity.velocity_env_cfg import (
   configure_foot_height_sensor,
   make_velocity_env_cfg,
 )
-
-TerrainType = Literal["rough", "obstacles"]
 
 
 def unitree_a2_rough_env_cfg(
@@ -77,9 +72,6 @@ def unitree_a2_rough_env_cfg(
 
   if cfg.scene.terrain is not None and cfg.scene.terrain.terrain_generator is not None:
     cfg.scene.terrain.terrain_generator.curriculum = True
-
-  joint_pos_action = cfg.actions["joint_pos"]
-  assert isinstance(joint_pos_action, JointPositionActionCfg)
 
   cfg.viewer.body_name = "base_link"
   cfg.viewer.distance = 1.5
@@ -165,6 +157,7 @@ def unitree_a2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]
+  cfg.observations["critic"].terms["foot_height"].params.pop("sensor_name", None)
   cfg.rewards["foot_clearance"].params.pop("height_sensor_name", None)
 
   # Disable terrain curriculum (not present in play mode since rough clears all).

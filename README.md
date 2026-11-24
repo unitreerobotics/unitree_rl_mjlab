@@ -58,8 +58,7 @@ python scripts/train.py Unitree-G1-Flat \
   --env.scene.num-envs=4096
 ```
 
-- The first argument (e.g., Mjlab-Velocity-Flat-Unitree-G1) specifies the training task.
-Available velocity tracking tasks:
+- The first argument (e.g., `Unitree-G1-Flat`) specifies the training task. Common flat velocity tracking tasks:
   - Unitree-GO2-Flat
   - Unitree-G1-Flat
   - Unitree-G1-23DOF-Flat
@@ -67,13 +66,20 @@ Available velocity tracking tasks:
   - Unitree-A2-Flat
   - Unitree-R1-Flat
 
+  Run `python scripts/list_envs.py` to list all registered training environments (including rough terrain, AS2, H2, and all tracking tasks).
+
+- If you do not have a W&B (Weights & Biases) account or prefer local logging, use TensorBoard by passing `--agent.logger=tensorboard`:
+
+  ```bash
+  python scripts/train.py Unitree-G1-Flat --env.scene.num-envs=4096 --agent.logger=tensorboard
+  ```
+
 > [!NOTE]
 > For more details, refer to the mjlab documentation:
 > [mjlab documentation](https://mujocolab.github.io/mjlab/index.html).
 
 > The v1.6 CLI uses Python collection syntax: lists such as `'[0, 1]'` and tuples such as
 > `'(512, 256, 128)'`. Scalar arguments keep their existing syntax.
-> See [tests/README.md](tests/README.md) for compatibility checks.
 
 ### 2. Motion Imitation Training
 
@@ -122,7 +128,7 @@ Available tasks:
 - `--env.terminations`: termination conditions for each episode
 - `--agent.seed`: random seed for reproducibility
 - `--agent.resume`: resume from the last saved checkpoint when enabled
-- `--agent.policy`: policy network architecture configuration
+- `--agent.logger`: logging backend (`wandb` by default; set to `tensorboard` if W&B is not used)
 - `--agent.algorithm`: reinforcement learning algorithm configuration (PPO, hyperparameters, etc.)
 
 **Training results are stored at**：`logs/rsl_rl/<robot>_(velocity | tracking)/<date_time>/model_<iteration>.pt`
@@ -143,7 +149,7 @@ python scripts/play.py Unitree-G1-Tracking-No-State-Estimation --motion_file=src
 
 **Note**：
 
-- During training, policy.onnx and policy.onnx.data are also exported for deployment onto physical robots.
+- During training, `policy.onnx` is also exported for deployment onto physical robots.
 
 **Visualization**：
 
@@ -175,7 +181,7 @@ Use `ifconfig` to determine the Ethernet device name for deployment.
 #### 4.4 Compilation
 
 Example: Unitree G1 velocity control.
-Place `policy.onnx` and `policy.onnx.data` into: `deploy/robots/g1/config/policy/velocity/v0/exported`.
+Place `policy.onnx` into: `deploy/robots/g1/config/policy/velocity/v0/exported`.
 Then compile:
 
 ```bash

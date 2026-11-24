@@ -1,9 +1,11 @@
 #pragma once
 
+#include <atomic>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <boost/program_options.hpp>
 #include <yaml-cpp/yaml.h>
-#include <filesystem>
 
 namespace param
 {
@@ -13,24 +15,24 @@ inline struct SimulationConfig
     std::string robot;
     std::filesystem::path robot_scene;
 
-    int domain_id;
+    int domain_id = 0;
     std::string interface;
 
-    int use_joystick;
-    std::string joystick_type;
-    std::string joystick_device;
-    int joystick_bits;
+    int use_joystick = 0;
+    std::string joystick_type = "xbox";
+    std::string joystick_device = "/dev/input/js0";
+    int joystick_bits = 15;
 
-    int print_scene_information;
+    int print_scene_information = 0;
 
-    int enable_elastic_band;
-    int band_attached_link = 0;
+    int enable_elastic_band = 0;
+    std::atomic<int> band_attached_link{-1};
 
     void load_from_yaml(const std::string &filename)
     {
-        auto cfg = YAML::LoadFile(filename);
         try
         {
+            auto cfg = YAML::LoadFile(filename);
             robot = cfg["robot"].as<std::string>();
             robot_scene = cfg["robot_scene"].as<std::string>();
             domain_id = cfg["domain_id"].as<int>();
@@ -42,9 +44,9 @@ inline struct SimulationConfig
             print_scene_information = cfg["print_scene_information"].as<int>();
             enable_elastic_band = cfg["enable_elastic_band"].as<int>();
         }
-        catch(const std::exception& e)
+        catch (const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << "Failed to load config '" << filename << "': " << e.what() << '\n';
             exit(EXIT_FAILURE);
         }
     }
@@ -63,6 +65,7 @@ inline po::variables_map helper(int argc, char** argv)
         ("network,n", po::value<std::string>(&config.interface), "DDS network interface; -n eth0")
         ("robot,r", po::value<std::string>(&config.robot), "Robot type; -r go2")
         ("scene,s", po::value<std::filesystem::path>(&config.robot_scene), "Robot scene file; -s scene_terrain.xml")
+        ("use_joystick,j", po::value<int>(&config.use_joystick), "Use physical joystick (0/1); -j 0")
     ;
 
     po::variables_map vm;

@@ -57,7 +57,7 @@ python scripts/train.py Unitree-G1-Flat \
   --env.scene.num-envs=4096
 ```
 
-- 第一个参数(如 Mjlab-Velocity-Flat-Unitree-G1)为必选参数，确定要启用的训练环境。可选：
+- 第一个参数（如 `Unitree-G1-Flat`）为必选参数，确定要启用的训练环境。常用 Flat 任务：
   - Unitree-GO2-Flat
   - Unitree-G1-Flat
   - Unitree-G1-23DOF-Flat
@@ -65,12 +65,20 @@ python scripts/train.py Unitree-G1-Flat \
   - Unitree-A2-Flat
   - Unitree-R1-Flat
 
+  可运行 `python scripts/list_envs.py` 查看全部已注册的训练环境（包括 Rough 地形、AS2、H2 及全部模仿任务等）。
+
+- 如果没有使用或未登录 W&B（Weights & Biases），可添加 `--agent.logger=tensorboard` 改用 TensorBoard 记录日志：
+
+  ```bash
+  python scripts/train.py Unitree-G1-Flat --env.scene.num-envs=4096 --agent.logger=tensorboard
+  ```
+
 > [!NOTE]
 > 更多有关详细说明，请参阅 mjlab 文档
 > [mjlab documentation](https://mujocolab.github.io/mjlab/index.html).
 
 > mjlab v1.6 的 CLI 使用 Python 集合语法：列表写作 `'[0, 1]'`，元组写作 `'(512, 256, 128)'`。
-> 训练、回放和动作转换命令中的其他标量参数保持原用法。兼容性验证命令见 [tests/README.md](tests/README.md)。
+> 训练、回放和动作转换命令中的其他标量参数保持原用法。
 
 ### 2. 动作模仿训练
 
@@ -119,7 +127,7 @@ python scripts/train.py Unitree-G1-Tracking-No-State-Estimation --motion_file=sr
 - `--env.terminations`: 终止条件配置，定义训练 episode 的结束条件。
 - `--agent.seed`: 训练随机种子，用于结果复现，不同 seed 会导致策略略有差异。
 - `--agent.resume`: 是否从上次中断的 checkpoint 继续训练。 设置为 True 时，会自动加载最近一次保存的 .pt 模型文件。
-- `--agent.policy`: 策略网络结构配置，例如 MLP 层数、隐藏维度、激活函数等。
+- `--agent.logger`: 日志记录工具配置，默认使用 `wandb`；若无 W&B 可设为 `tensorboard`。
 - `--agent.algorithm`: 强化学习算法配置。可设置优化超参数，如学习率、批量大小、GAE λ 等。
 
 **默认保存训练结果**：`logs/rsl_rl/<robot>_(velocity | tracking)/<date_time>/model_<iteration>.pt`
@@ -171,7 +179,7 @@ python scripts/play.py Unitree-G1-Tracking-No-State-Estimation --motion_file=src
 
 #### 4.4 编译
 以 Unitree G1 速度控制为例（其他机器人同理）。
-将策略文件（`policy.onnx`）放入`deploy/robots/g1/config/policy/velocity/vo/exported` 下，然后执行：
+将策略文件（`policy.onnx`）放入`deploy/robots/g1/config/policy/velocity/v0/exported` 下，然后执行：
 
 ```bash
 cd deploy/robots/g1

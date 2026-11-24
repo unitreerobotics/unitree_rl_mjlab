@@ -11,12 +11,18 @@ std::shared_ptr<Keyboard> FSMState::keyboard = std::make_shared<Keyboard>();
 void init_fsm_state()
 {
     auto lowcmd_sub = std::make_shared<unitree::robot::g1::subscription::LowCmd>();
-    usleep(0.2 * 1e6);
-    if(!lowcmd_sub->isTimeout())
+    lowcmd_sub->set_timeout_ms(200);
+    usleep(300000);
+    if (!lowcmd_sub->isTimeout())
     {
-        spdlog::critical("The other process is using the lowcmd channel, please close it first.");
+        spdlog::warn("Another process is using the lowcmd channel; attempting to release onboard motion service...");
         unitree::robot::go2::shutdown();
-        // exit(0);
+        usleep(300000);
+        if (!lowcmd_sub->isTimeout())
+        {
+            spdlog::critical("The other process is still using the lowcmd channel, please close it first.");
+            exit(EXIT_FAILURE);
+        }
     }
     FSMState::lowcmd = std::make_unique<LowCmd_t>();
     FSMState::lowstate = std::make_shared<LowState_t>();

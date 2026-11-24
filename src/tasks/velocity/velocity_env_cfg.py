@@ -30,11 +30,11 @@ from mjlab.sensor import (
   TerrainHeightSensorCfg,
 )
 from mjlab.sim import MujocoCfg, SimulationCfg
-from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.terrains.config import ROUGH_TERRAINS_CFG
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
+from src.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 
 def configure_foot_height_sensor(
@@ -57,6 +57,9 @@ def configure_foot_height_sensor(
   cfg.rewards["foot_clearance"].params["height_sensor_name"] = "foot_height_scan"
   # Raycast frames follow site_names; keep reward velocities in the same order.
   cfg.rewards["foot_clearance"].params["asset_cfg"].preserve_order = True
+  foot_height_term = cfg.observations["critic"].terms["foot_height"]
+  foot_height_term.params["sensor_name"] = "foot_height_scan"
+  foot_height_term.params["asset_cfg"].preserve_order = True
 
 
 def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
@@ -102,6 +105,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     "joint_pos": ObservationTermCfg(
       func=mdp.joint_pos_rel,
       noise=Unoise(n_min=-0.01, n_max=0.01),
+      params={"biased": True},
     ),
     "joint_vel": ObservationTermCfg(
       func=mdp.joint_vel_rel,
@@ -117,12 +121,32 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
   }
 
   critic_terms = {
-    **actor_terms,
     "base_lin_vel": ObservationTermCfg(
       func=mdp.builtin_sensor,
       params={"sensor_name": "robot/imu_lin_vel"},
-      noise=Unoise(n_min=-0.5, n_max=0.5),
     ),
+    "base_ang_vel": ObservationTermCfg(
+      func=mdp.builtin_sensor,
+      params={"sensor_name": "robot/imu_ang_vel"},
+    ),
+    "projected_gravity": ObservationTermCfg(
+      func=mdp.projected_gravity,
+    ),
+    "command": ObservationTermCfg(
+      func=mdp.generated_commands,
+      params={"command_name": "twist"},
+    ),
+    "phase": ObservationTermCfg(
+      func=mdp.phase,
+      params={"period": 0.6, "command_name": "twist"},
+    ),
+    "joint_pos": ObservationTermCfg(
+      func=mdp.joint_pos_rel,
+    ),
+    "joint_vel": ObservationTermCfg(
+      func=mdp.joint_vel_rel,
+    ),
+    "actions": ObservationTermCfg(func=mdp.last_action),
     "height_scan": ObservationTermCfg(
       func=envs_mdp.height_scan,
       params={"sensor_name": "terrain_scan"},

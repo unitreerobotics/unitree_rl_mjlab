@@ -59,6 +59,8 @@ class GlfwAdapter : public PlatformUIAdapter {
   int TranslateKeyCode(int key) const override;
   mjtButton TranslateMouseButton(int button) const override;
 
+  GLFWwindow* window() const { return window_; }
+
  private:
   GLFWvidmode vidmode_;
   GLFWwindow* window_;

@@ -256,6 +256,7 @@ class Parser {
     Eat(Token::kIdent);
 
     // Optional hold duration: name '(' number ['s'|'sec'|'secs'] ')'
+    bool has_hold = false;
     if (tok_.kind == Token::kLParen) {
       Eat(Token::kLParen);
       if (tok_.kind != Token::kNumber) throw std::runtime_error("Expected hold seconds number near pos=" + std::to_string(lex_.pos()));
@@ -273,6 +274,7 @@ class Parser {
       }
       Eat(Token::kRParen);
       a.field = Field::kHoldTimeGE;
+      has_hold = true;
     }
 
     // Optional explicit state
@@ -280,9 +282,9 @@ class Parser {
       Eat(Token::kDot);
       if (tok_.kind != Token::kIdent) throw std::runtime_error("Expected state after '.' near pos=" + std::to_string(lex_.pos()));
       const std::string st = tok_.text;
-      if (st == "on_pressed")      a.field = Field::kOnPressed;
-      else if (st == "on_released") a.field = Field::kOnReleased;
-      else if (st == "pressed")     a.field = Field::kPressed;
+      if (st == "on_pressed")        a.field = Field::kOnPressed;
+      else if (st == "on_released")  a.field = Field::kOnReleased;
+      else if (st == "pressed")      { if (!has_hold) a.field = Field::kPressed; }
       else throw std::runtime_error("Unknown field: " + st + " (allowed: pressed|on_pressed|on_released)");
       Eat(Token::kIdent);
     }

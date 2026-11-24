@@ -15,10 +15,16 @@ _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
 def foot_height(
-  env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG
+  env: ManagerBasedRlEnv,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+  sensor_name: str | None = None,
 ) -> torch.Tensor:
+  if sensor_name is not None:
+    return env.scene[sensor_name].data.heights  # (num_envs, num_sites)
   asset: Entity = env.scene[asset_cfg.name]
-  return asset.data.site_pos_w[:, asset_cfg.site_ids, 2]  # (num_envs, num_sites)
+  return (
+    asset.data.site_pos_w[:, asset_cfg.site_ids, 2] - env.scene.env_origins[:, 2:3]
+  )  # (num_envs, num_sites)
 
 
 def foot_air_time(env: ManagerBasedRlEnv, sensor_name: str) -> torch.Tensor:
@@ -49,8 +55,9 @@ def phase(env: ManagerBasedRlEnv, period: float, command_name: str) -> torch.Ten
   phase = torch.zeros(env.num_envs, 2, device=env.device)
   phase[:, 0] = torch.sin(global_phase * torch.pi * 2.0)
   phase[:, 1] = torch.cos(global_phase * torch.pi * 2.0)
-  stand_mask = (
-    torch.linalg.norm(env.command_manager.get_command(command_name), dim=1) < 0.1
-  )
+  command = env.command_manager.get_command(command_name)
+  assert command is not None
+  total_command = torch.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])
+  stand_mask = total_command <= 0.1
   phase = torch.where(stand_mask.unsqueeze(1), torch.zeros_like(phase), phase)
   return phase
