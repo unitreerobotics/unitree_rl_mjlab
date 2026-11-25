@@ -68,11 +68,7 @@ python scripts/train.py Unitree-G1-Flat \
 
   Run `python scripts/list_envs.py` to list all registered training environments (including rough terrain, AS2, H2, and all tracking tasks).
 
-- If you do not have a W&B (Weights & Biases) account or prefer local logging, use TensorBoard by passing `--agent.logger=tensorboard`:
-
-  ```bash
-  python scripts/train.py Unitree-G1-Flat --env.scene.num-envs=4096 --agent.logger=tensorboard
-  ```
+- Training logs are recorded with TensorBoard by default (`logs/rsl_rl/...`). View curves with `tensorboard --logdir logs/rsl_rl`.
 
 > [!NOTE]
 > For more details, refer to the mjlab documentation:
@@ -128,7 +124,7 @@ Available tasks:
 - `--env.terminations`: termination conditions for each episode
 - `--agent.seed`: random seed for reproducibility
 - `--agent.resume`: resume from the last saved checkpoint when enabled
-- `--agent.logger`: logging backend (`wandb` by default; set to `tensorboard` if W&B is not used)
+- `--agent.logger`: logging backend (`tensorboard` by default)
 - `--agent.algorithm`: reinforcement learning algorithm configuration (PPO, hyperparameters, etc.)
 
 **Training results are stored at**：`logs/rsl_rl/<robot>_(velocity | tracking)/<date_time>/model_<iteration>.pt`

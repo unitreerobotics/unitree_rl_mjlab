@@ -3,7 +3,7 @@
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -17,7 +17,6 @@ from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.utils.gpu import select_gpus
 from mjlab.utils.os import dump_yaml, get_checkpoint_path
 from mjlab.utils.torch import configure_torch_backends
-from mjlab.utils.wandb import add_wandb_tags
 from mjlab.utils.wrappers import VideoRecorder
 
 
@@ -36,7 +35,7 @@ class TrainConfig:
   @staticmethod
   def from_task(task_id: str) -> "TrainConfig":
     env_cfg = load_env_cfg(task_id)
-    agent_cfg = load_rl_cfg(task_id)
+    agent_cfg = replace(load_rl_cfg(task_id), logger="tensorboard")
     return TrainConfig(env=env_cfg, agent=agent_cfg)
 
 
@@ -128,14 +127,8 @@ def run_train(
       dump_yaml(log_dir / "params" / "env.yaml", env_cfg)
       dump_yaml(log_dir / "params" / "agent.yaml", agent_cfg)
 
-    if agent_cfg["logger"] == "wandb":
-      agent_cfg["logger"] = {
-        "class_name": "src.tasks.utils.wandb_log_writer:UnitreeWandbLogWriter",
-        "project_name": agent_cfg["wandb_project"],
-      }
     runner = runner_cls(env, agent_cfg, str(log_dir), device)
 
-    add_wandb_tags(cfg.agent.wandb_tags)
     runner.add_git_repo_to_log(__file__)
     if resume_path is not None:
       print(f"[INFO]: Loading model checkpoint from: {resume_path}")

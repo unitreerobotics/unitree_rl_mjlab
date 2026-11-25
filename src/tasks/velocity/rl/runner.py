@@ -1,9 +1,6 @@
 import os
 from pathlib import Path
 
-import wandb
-from rsl_rl.utils import WandbLogWriter
-
 from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.rl.exporter_utils import (
   attach_metadata_to_onnx,
@@ -20,13 +17,6 @@ class VelocityOnPolicyRunner(MjlabOnPolicyRunner):
     policy_path = str(Path(path).parent)
     filename = "policy.onnx"
     self.export_policy_to_onnx(policy_path, filename)
-    run_name: str = (
-      wandb.run.name
-      if isinstance(self.logger.writer, WandbLogWriter) and wandb.run
-      else "local"
-    )  # type: ignore[assignment]
     onnx_path = os.path.join(policy_path, filename)
-    metadata = get_base_metadata(self.env.unwrapped, run_name)
+    metadata = get_base_metadata(self.env.unwrapped, "local")
     attach_metadata_to_onnx(onnx_path, metadata)
-    if isinstance(self.logger.writer, WandbLogWriter) and self.cfg["upload_model"]:
-      wandb.save(onnx_path, base_path=policy_path)

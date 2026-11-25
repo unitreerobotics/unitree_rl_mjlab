@@ -67,11 +67,7 @@ python scripts/train.py Unitree-G1-Flat \
 
   可运行 `python scripts/list_envs.py` 查看全部已注册的训练环境（包括 Rough 地形、AS2、H2 及全部模仿任务等）。
 
-- 如果没有使用或未登录 W&B（Weights & Biases），可添加 `--agent.logger=tensorboard` 改用 TensorBoard 记录日志：
-
-  ```bash
-  python scripts/train.py Unitree-G1-Flat --env.scene.num-envs=4096 --agent.logger=tensorboard
-  ```
+- 训练默认使用 TensorBoard 记录日志（保存在 `logs/rsl_rl/...`），可通过 `tensorboard --logdir logs/rsl_rl` 查看曲线。
 
 > [!NOTE]
 > 更多有关详细说明，请参阅 mjlab 文档
@@ -127,7 +123,7 @@ python scripts/train.py Unitree-G1-Tracking-No-State-Estimation --motion_file=sr
 - `--env.terminations`: 终止条件配置，定义训练 episode 的结束条件。
 - `--agent.seed`: 训练随机种子，用于结果复现，不同 seed 会导致策略略有差异。
 - `--agent.resume`: 是否从上次中断的 checkpoint 继续训练。 设置为 True 时，会自动加载最近一次保存的 .pt 模型文件。
-- `--agent.logger`: 日志记录工具配置，默认使用 `wandb`；若无 W&B 可设为 `tensorboard`。
+- `--agent.logger`: 日志记录工具配置，默认使用 `tensorboard`。
 - `--agent.algorithm`: 强化学习算法配置。可设置优化超参数，如学习率、批量大小、GAE λ 等。
 
 **默认保存训练结果**：`logs/rsl_rl/<robot>_(velocity | tracking)/<date_time>/model_<iteration>.pt`

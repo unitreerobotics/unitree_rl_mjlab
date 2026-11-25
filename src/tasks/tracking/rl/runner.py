@@ -2,9 +2,6 @@ import os
 from pathlib import Path
 from typing import cast
 
-import wandb
-from rsl_rl.utils import WandbLogWriter
-
 from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.rl.exporter_utils import (
   attach_metadata_to_onnx,
@@ -23,12 +20,7 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
     filename = "policy.onnx"
     onnx_path = os.path.join(policy_path, filename)
     self.export_policy_to_onnx(policy_path, filename)
-    run_name: str = (
-      wandb.run.name
-      if isinstance(self.logger.writer, WandbLogWriter) and wandb.run
-      else "local"
-    )  # type: ignore[assignment]
-    metadata = get_base_metadata(self.env.unwrapped, run_name)
+    metadata = get_base_metadata(self.env.unwrapped, "local")
     motion_term = cast(
       MotionCommand, self.env.unwrapped.command_manager.get_term("motion")
     )
@@ -39,5 +31,3 @@ class MotionTrackingOnPolicyRunner(MjlabOnPolicyRunner):
       }
     )
     attach_metadata_to_onnx(onnx_path, metadata)
-    if isinstance(self.logger.writer, WandbLogWriter) and self.cfg["upload_model"]:
-      wandb.save(onnx_path, base_path=policy_path)
