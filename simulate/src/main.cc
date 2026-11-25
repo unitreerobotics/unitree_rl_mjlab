@@ -396,8 +396,10 @@ namespace
         return;
       }
 
-      const std::unique_lock<std::recursive_mutex> lock(sim.mtx);
+      // Simulate::Load waits for the render thread, which needs sim.mtx: call it
+      // before taking the lock.
       sim.Load(mnew, dnew, filename);
+      const std::unique_lock<std::recursive_mutex> lock(sim.mtx);
 
       mj_deleteData(d);
       mj_deleteModel(m);
@@ -574,10 +576,12 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
       dnew = mj_makeData(mnew);
     if (dnew)
     {
+      // Simulate::Load waits for the render thread, which needs sim->mtx: call it
+      // before taking the lock.
+      sim->Load(mnew, dnew, filename);
       const std::unique_lock<std::recursive_mutex> lock(sim->mtx);
       m = mnew;
       d = dnew;
-      sim->Load(m, d, filename);
       mj_forward(m, d);
       UpdateBandAttachedLink(m);
 
