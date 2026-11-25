@@ -346,7 +346,7 @@ def stand_still(
     asset.data.joint_pos[:, asset_cfg.joint_ids]
     - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
   )
-  reward = torch.sum(torch.abs(diff_angle), dim=1)
+  reward = torch.sum(torch.square(diff_angle), dim=1)
   if command_name is not None:
     command = env.command_manager.get_command(command_name)
     if command is not None:

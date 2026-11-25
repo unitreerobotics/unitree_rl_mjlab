@@ -1,0 +1,65 @@
+FSM:
+  _: # enabled fsms
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    Velocity:
+      id: 3
+      type: RLBase
+  # Motor slots 0-28 are the body joints; 29 and 30 are head pitch and yaw.
+  Passive:
+    transitions:
+      FixStand: LT + up.on_pressed
+    mode: [ # motor mode
+      1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1,
+      1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1,
+      1, 1,
+    ]
+    kd: [
+      3, 3, 3, 3, 3, 3,
+      3, 3, 3, 3, 3, 3,
+      3, 3, 3,
+      3, 3, 3, 3, 3, 3, 3,
+      3, 3, 3, 3, 3, 3, 3,
+      1, 1,
+    ]
+  FixStand:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: RT + A.on_pressed
+    kp: [
+      200, 200, 200, 200, 40, 40,
+      200, 200, 200, 200, 40, 40,
+      150, 150, 150,
+      40, 40, 40, 40, 40, 20, 20,
+      40, 40, 40, 40, 40, 20, 20,
+      30, 30,
+    ]
+    kd: [
+      4, 4, 4, 4, 2, 2,
+      4, 4, 4, 4, 2, 2,
+      3, 3, 3,
+      2, 2, 2, 2, 2, 1, 1,
+      2, 2, 2, 2, 2, 1, 1,
+      1, 1,
+    ]
+    ts: [0, 3]
+    qs: [
+      [],
+      [
+        -0.25, 0, 0, 0.5, 0, -0.25,
+        -0.25, 0, 0, 0.5, 0, -0.25,
+        0, 0, 0,
+        0.35, 0.18, 0, 0.87, 0, 0, 0,
+        0.35, -0.18, 0, 0.87, 0, 0, 0,
+        0, 0,
+      ]
+    ]
+  Velocity:
+    transitions:
+      Passive: LT + B.on_pressed
+    policy_dir: config/policy/velocity

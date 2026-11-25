@@ -4,7 +4,7 @@
 ## ✳️ 概述
 
 Unitree RL Mjlab 是一个基于 [mjlab](https://github.com/mujocolab/mjlab.git) 构建的强化学习项目，
-使用 MuJoCo 作为物理仿真后端，当前支持 Unitree GO2, A2, AS2, G1, R1, H1_2 和 H2 机器人。
+使用 MuJoCo 作为物理仿真后端，当前支持 Unitree GO2, A2, AS2, G1, R1, H1_2, H2 和 H2X 机器人。
 
 Mjlab 结合了 [Isaac Lab](https://github.com/isaac-sim/IsaacLab) 的成熟高层 API 与 
 [MuJoCo](https://github.com/google-deepmind/mujoco_warp) 的高精度物理引擎，
@@ -65,7 +65,7 @@ python scripts/train.py Unitree-G1-Flat \
   - Unitree-A2-Flat
   - Unitree-R1-Flat
 
-  可运行 `python scripts/list_envs.py` 查看全部已注册的训练环境（包括 Rough 地形、AS2、H2 及全部模仿任务等）。
+  可运行 `python scripts/list_envs.py` 查看全部已注册的训练环境（包括 Rough 地形、AS2、H2、H2X 及全部模仿任务等）。
 
 - 训练默认使用 TensorBoard 记录日志（保存在 `logs/rsl_rl/...`），可通过 `tensorboard --logdir logs/rsl_rl` 查看曲线。
 

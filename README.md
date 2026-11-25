@@ -4,7 +4,7 @@
 ## ✳️ Overview
 Unitree RL Mjlab is a reinforcement learning project built upon the
 [mjlab](https://github.com/mujocolab/mjlab.git), using MuJoCo as its 
-physics simulation backend, currently supporting Unitree GO2, A2, AS2, G1, R1, H1_2 and H2.
+physics simulation backend, currently supporting Unitree GO2, A2, AS2, G1, R1, H1_2, H2 and H2X.
 
 Mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s proven API
 with best-in-class [MuJoCo](https://github.com/google-deepmind/mujoco_warp)
@@ -66,7 +66,7 @@ python scripts/train.py Unitree-G1-Flat \
   - Unitree-A2-Flat
   - Unitree-R1-Flat
 
-  Run `python scripts/list_envs.py` to list all registered training environments (including rough terrain, AS2, H2, and all tracking tasks).
+  Run `python scripts/list_envs.py` to list all registered training environments (including rough terrain, AS2, H2, H2X, and all tracking tasks).
 
 - Training logs are recorded with TensorBoard by default (`logs/rsl_rl/...`). View curves with `tensorboard --logdir logs/rsl_rl`.
 

@@ -31,6 +31,12 @@ from .unitree_h2.h2_constants import (
 from .unitree_h2.h2_constants import (
   get_h2_robot_cfg as get_h2_robot_cfg,
 )
+from .unitree_h2x.h2x_constants import (
+  H2X_ACTION_SCALE as H2X_ACTION_SCALE,
+)
+from .unitree_h2x.h2x_constants import (
+  get_h2x_robot_cfg as get_h2x_robot_cfg,
+)
 from .unitree_r1.r1_constants import (
   R1_ACTION_SCALE as R1_ACTION_SCALE,
 )
